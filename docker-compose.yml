@@ -1,0 +1,114 @@
+services:
+  # ── PostgreSQL baza ──
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    container_name: strom-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-energy_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-energy_pass_123}
+      POSTGRES_DB: ${DB_NAME:-energydb}
+      TZ: ${TZ:-Europe/Ljubljana}
+#    ports:
+#      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-energy_user} -d ${DB_NAME:-energydb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      zunanji:
+        ipv4_address: 172.27.0.3
+
+  # ── Next.js aplikacija ──
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: strom-app
+    restart: unless-stopped
+#    ports:
+#      - "${APP_PORT:-3000}:3000"
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-energy_user}:${DB_PASSWORD:-energy_pass_123}@db:5432/${DB_NAME:-energydb}
+      - JWT_SECRET=${JWT_SECRET:-spremeni_me_v_produkciji_abc123}
+      - NODE_ENV=production
+      # POMEMBNO: nastavi na "true" samo če imaš HTTPS (nginx + certbot)
+      # Če dostopaš prek http://ip:3000, mora biti "false"
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+      # SolarEdge API (opcijsko)
+      - SOLAREDGE_API_KEY=${SOLAREDGE_API_KEY:-}
+      - SOLAREDGE_SITE_ID=${SOLAREDGE_SITE_ID:-}
+      # MELCloud API (opcijsko)
+      - MELCLOUD_EMAIL=${MELCLOUD_EMAIL:-}
+      - MELCLOUD_PASSWORD=${MELCLOUD_PASSWORD:-}
+      - MELCLOUD_DEVICE_ID=${MELCLOUD_DEVICE_ID:-}
+#      # FOX ESS AČI (opcijsko)
+#      - FOX_API_KEY=${FOX_API_KEY:-a479aa5e-6650-4a30-bdb6-265ea3fd5f6d}
+#      - FOX_DEVICE_SN=${FOX_DEVICE_SN:-60AH52B03B8Q094}
+      - SESSION_DAYS=${SESSION_DAYS:-180}
+      - TZ=${TZ:-Europe/Ljubljana}
+      # GSRN merilne točke potrebuješ za endpoint /merilna-tocka/{gsrn}
+      - MOJELEKTRO_API_KEY=${MOJELEKTRO_API_KEY:-}
+      - MOJELEKTRO_EIMM=${MOJELEKTRO_EIMM:-}
+      - MOJELEKTRO_GSRN_MT=${MOJELEKTRO_GSRN_MT:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      zunanji:
+        ipv4_address: 172.27.0.2
+      traefik:
+        ipv4_address: 172.18.0.105
+    labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik"
+        - "traefik.http.routers.strom.rule=Host(`strom.tekavec.net`)" # || Host(`dba.tekavec.org`) || Host(`dba.moj-svet.si`)"
+        - "traefik.http.services.strom.loadbalancer.server.port=3000"
+#        - "traefik.http.routers.strom.tls.domains[0].main=strom.tekavec.net"
+#        - "traefik.http.routers.dba.tls.domains[1].main=dba.tekavec.org"
+#        - "traefik.http.routers.dba.tls.domains[2].main=dba.moj-svet.si"
+        - "traefik.http.routers.strom.service=strom"
+        - "traefik.http.routers.strom.entrypoints=websecure"
+        - "traefik.http.routers.strom.tls=true"
+        - "traefik.http.routers.strom.tls.certresolver=le-test"
+#        - "traefik.http.routers.dba.middlewares=dba-auth"
+#        - "traefik.http.middlewares.dba-auth.basicauth.users=blaze666:{SHA}OZEO/t+ggBAOzLTh5+ULYTxoaHY="
+        - "traefik.http.routers.strom.middlewares=geoblock@file,tinyauth@file"
+
+  cron:
+    build:
+      context: .
+      dockerfile: Dockerfile.cron
+    container_name: strom-cron-sync
+    restart: unless-stopped
+    environment:
+      - APP_URL=http://web:3000
+      - CRON_SECRET=${CRON_SECRET:-energy_cron_secret_123}
+      - TZ=${TZ:-Europe/Ljubljana}
+    depends_on:
+      - web
+    command:
+      - /bin/sh
+      - -c
+      - |
+        cp /usr/share/zoneinfo/$${TZ:-Europe/Ljubljana} /etc/localtime
+        echo "$${TZ:-Europe/Ljubljana}" > /etc/timezone
+        echo "⏰ Cron zagnan. Sinhronizacija vsak dan ob 4:00 ($${TZ:-Europe/Ljubljana})"
+        echo "0 4 * * * /app/cron-sync.sh >> /var/log/cron-sync.log 2>&1" > /etc/crontabs/root
+        crond -f -l 2
+    networks:
+      zunanji:
+        ipv4_address: 172.27.0.4
+
+networks:
+  zunanji:
+    external: true
+  traefik:
+    external: true
+
+#volumes:
+#  pgdata:
+#    driver: local

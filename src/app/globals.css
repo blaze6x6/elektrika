@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+/* Light theme overrides */
+html.light-theme {
+  --bg-primary: #f3f4f6;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e5e7eb;
+  --bg-quaternary: #d1d5db;
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --border-color: #d1d5db;
+}
+
+html.light-theme body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Base surfaces */
+html.light-theme .bg-gray-900 { background-color: var(--bg-primary); }
+html.light-theme .bg-gray-800 { background-color: var(--bg-secondary); }
+html.light-theme .bg-gray-950 { background-color: var(--bg-secondary); }
+html.light-theme .bg-gray-700 { background-color: var(--bg-tertiary); }
+html.light-theme .bg-gray-600 { background-color: var(--bg-quaternary); }
+html.light-theme .bg-gray-800\/50,
+html.light-theme .bg-gray-800\/70,
+html.light-theme .bg-gray-800\/80,
+html.light-theme .bg-gray-900\/20,
+html.light-theme .bg-gray-900\/30,
+html.light-theme .bg-gray-900\/40 { background-color: var(--bg-secondary); }
+
+/* Text colors */
+html.light-theme .text-gray-100,
+html.light-theme .text-gray-200,
+html.light-theme .text-gray-300,
+html.light-theme .text-white { color: var(--text-primary); }
+html.light-theme .text-gray-400 { color: var(--text-secondary); }
+html.light-theme .text-gray-500,
+html.light-theme .text-gray-600,
+html.light-theme .text-gray-700 { color: var(--text-muted); }
+
+/* Accent text colors tuned for light theme */
+html.light-theme .text-blue-300,
+html.light-theme .text-blue-400 { color: #1d4ed8; }
+html.light-theme .text-green-300,
+html.light-theme .text-green-400 { color: #15803d; }
+html.light-theme .text-yellow-300,
+html.light-theme .text-yellow-400 { color: #a16207; }
+html.light-theme .text-red-400 { color: #dc2626; }
+html.light-theme .text-cyan-400 { color: #0f766e; }
+html.light-theme .text-purple-400 { color: #7c3aed; }
+
+/* Borders */
+html.light-theme .border-gray-700,
+html.light-theme .border-gray-600,
+html.light-theme .border-gray-800,
+html.light-theme .border-gray-500 { border-color: var(--border-color); }
+html.light-theme .border-gray-800\/60 { border-color: var(--border-color); }
+
+/* Hover/focus */
+html.light-theme .hover\:bg-gray-900\/60:hover { background-color: rgba(229,231,235,0.7); }
+html.light-theme .hover\:bg-gray-700:hover { background-color: var(--bg-quaternary); }
+html.light-theme .hover\:bg-gray-600:hover { background-color: #c7d2da; }
+html.light-theme .focus\:bg-gray-800:focus { background-color: var(--bg-tertiary); }
+html.light-theme .focus\:bg-gray-700:focus { background-color: var(--bg-tertiary); }
+
+/* Inputs */
+html.light-theme input.bg-transparent { color: var(--text-primary); }
+html.light-theme input.bg-gray-700,
+html.light-theme select.bg-gray-700,
+html.light-theme textarea.bg-gray-700 {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+html.light-theme input::placeholder,
+html.light-theme textarea::placeholder { color: #6b7280; }
+
+/* Shadows */
+html.light-theme .shadow-md,
+html.light-theme .shadow-lg,
+html.light-theme .shadow-2xl {
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+}
+
+/* Tinted panels / alerts */
+html.light-theme .bg-yellow-900\/40,
+html.light-theme .bg-yellow-900\/50 { background-color: #fef3c7; }
+html.light-theme .bg-green-900\/30 { background-color: #dcfce7; }
+html.light-theme .bg-red-900\/30 { background-color: #fee2e2; }
+html.light-theme .bg-blue-900\/20,
+html.light-theme .bg-blue-900\/30,
+html.light-theme .bg-blue-900\/40 { background-color: #dbeafe; }
+html.light-theme .bg-purple-900\/30 { background-color: #ede9fe; }
+
+html.light-theme .border-yellow-700,
+html.light-theme .border-yellow-700\/50 { border-color: #f59e0b; }
+html.light-theme .border-blue-700,
+html.light-theme .border-blue-800 { border-color: #60a5fa; }
+html.light-theme .border-green-800 { border-color: #4ade80; }
+html.light-theme .border-red-800 { border-color: #f87171; }
+
+/* Sticky header/table shadow fix */
+html.light-theme th[class*="shadow-\[0_2px_0"] {
+  box-shadow: 0 2px 0 rgba(209,213,219,1);
+}
+
+/* Keep white text on strong colored buttons */
+html.light-theme .bg-blue-600.text-white,
+html.light-theme .bg-blue-700.text-white,
+html.light-theme .bg-green-600.text-white,
+html.light-theme .bg-green-700.text-white,
+html.light-theme .bg-purple-700.text-white,
+html.light-theme .bg-cyan-700.text-white,
+html.light-theme .bg-yellow-700.text-white,
+html.light-theme .bg-red-600.text-white,
+html.light-theme .bg-red-700.text-white {
+  color: #ffffff;
+}
+
+/* File input button */
+html.light-theme input[type="file"]::file-selector-button {
+  background: #2563eb;
+  color: white;
+}

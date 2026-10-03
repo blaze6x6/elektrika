@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="100" fill="#1f2937"/>
+  <!-- Lightning bolt (electricity) -->
+  <polygon points="300,60 180,280 260,280 210,450 340,230 255,230" fill="#facc15"/>
+  <!-- Small leaf -->
+  <ellipse cx="370" cy="140" rx="40" ry="25" fill="#22c55e" transform="rotate(-30, 370, 140)"/>
+  <line x1="370" y1="140" x2="350" y2="175" stroke="#16a34a" stroke-width="5"/>
+</svg>

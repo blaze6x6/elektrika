@@ -1,0 +1,4 @@
+FROM alpine:3.19
+RUN apk add --no-cache curl tzdata
+COPY cron-sync.sh /app/cron-sync.sh
+RUN chmod +x /app/cron-sync.sh

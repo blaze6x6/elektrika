@@ -3,7 +3,7 @@ services:
   db:
     image: postgres:15-alpine
     restart: unless-stopped
-    container_name: strom-db
+    container_name: poraba-elektrika-db
     environment:
       POSTGRES_USER: ${DB_USER:-energy_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-energy_pass_123}
@@ -24,7 +24,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: strom-app
+    container_name: poraba-elektrika-app
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3000}:3000"
@@ -56,7 +56,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.cron
-    container_name: strom-cron-sync
+    container_name: poraba-elektrika-cron-sync
     restart: unless-stopped
     environment:
       - APP_URL=http://web:3000

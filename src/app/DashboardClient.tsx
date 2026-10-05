@@ -180,7 +180,6 @@ export default function DashboardClient() {
     if (json.success) await fetchAll();
     // Fetch weather in parallel
     await Promise.allSettled([
-      fetch("/api/weather", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month: monthKey }) }),
       fetch("/api/sync/mojelektro", { method: "POST", headers: { "Content-Type": "application/json", "x-cron-secret": "" }, body: JSON.stringify({ month: monthKey }) }),
     ]);
     setSyncing(false);
@@ -381,21 +380,14 @@ export default function DashboardClient() {
                   <span className="block text-gray-500 text-[7px] sm:text-[8px] hidden sm:block">({col.unit})</span>
                 </th>
               ))}
-              <th className="sticky top-0 z-30 border border-gray-700 bg-gray-800 px-0.5 py-1 text-center shadow-[0_2px_0_rgba(55,65,81,1)]">
-                <span className="block font-bold text-[8px] sm:text-[10px] leading-tight">🌡️ Temp.</span>
-                <span className="block text-gray-500 text-[7px] sm:text-[8px] hidden sm:block">(°C)</span>
-              </th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={visibleCols.length + 2} className="text-center p-8 text-gray-500">Nalaganje...</td></tr>
+              <tr><td colSpan={visibleCols.length + 1} className="text-center p-8 text-gray-500">Nalaganje...</td></tr>
             ) : (<>
               {daysInMonth.map(day => {
                 const dateStr = format(day, "yyyy-MM-dd");
-                const tempVal = monthLookup[dateStr]?.["temperatura"];
-                const tempMax = monthLookup[dateStr]?.["temp_max"];
-                const tempMin = monthLookup[dateStr]?.["temp_min"];
                 return (
                   <tr key={dateStr} className="hover:bg-gray-900/60 border-b border-gray-800/60">
                     <td className="px-1 py-0.5 border border-gray-700 font-medium text-center sticky left-0 bg-gray-950 z-10 whitespace-nowrap">
@@ -421,17 +413,6 @@ export default function DashboardClient() {
                         </td>
                       );
                     })}
-                    {/* Temperatura stolpec */}
-                    <td className="px-1 py-0.5 border border-gray-700 text-center whitespace-nowrap">
-                      {tempVal !== undefined ? (
-                        <span
-                          title={`Min: ${tempMin?.toFixed(1) ?? "?"}°C / Max: ${tempMax?.toFixed(1) ?? "?"}°C`}
-                          className={`font-medium ${tempVal < 5 ? "text-blue-400" : tempVal < 15 ? "text-cyan-400" : tempVal < 25 ? "text-green-400" : "text-orange-400"}`}
-                        >
-                          {tempVal.toFixed(1)}°
-                        </span>
-                      ) : <span className="text-gray-700">–</span>}
-                    </td>
                   </tr>
                 );
               })}
@@ -442,7 +423,6 @@ export default function DashboardClient() {
                   <span className="hidden sm:inline">SKUPAJ</span>
                 </td>
                 {visibleCols.map(col => <td key={col.key} className={`px-1 py-0.5 border border-gray-700 text-right ${(monthTotals[col.key] || 0) < 0 ? "text-red-400" : "text-green-400"}`}>{formatNum(monthTotals[col.key] || 0, 2)}</td>)}
-                <td className="px-1 py-0.5 border border-gray-700 text-center text-gray-500">–</td>
               </tr>
               <tr className="bg-gray-800/80 text-gray-400">
                 <td className="px-1 py-0.5 border border-gray-700 sticky left-0 bg-gray-800/80 z-10 text-[8px] sm:text-[10px]">
@@ -450,7 +430,6 @@ export default function DashboardClient() {
                   <span className="hidden sm:inline">Povprečje/dan</span>
                 </td>
                 {visibleCols.map(col => <td key={col.key} className="px-1 py-0.5 border border-gray-700 text-right">{formatNum(monthAvg[col.key] || 0, 2)}</td>)}
-                <td className="px-1 py-0.5 border border-gray-700 text-center text-gray-500">–</td>
               </tr>
               <tr className="bg-blue-900/30 font-bold border-t-2 border-blue-800">
                 <td className="px-1 py-0.5 border border-gray-700 sticky left-0 bg-blue-950/60 z-10 text-blue-400 text-[8px] sm:text-xs">
@@ -458,7 +437,6 @@ export default function DashboardClient() {
                   <span className="hidden sm:inline">Leto {yearKey}</span>
                 </td>
                 {visibleCols.map(col => <td key={col.key} className={`px-1 py-0.5 border border-gray-700 text-right ${(yearTotals[col.key] || 0) < 0 ? "text-red-400" : "text-blue-400"}`}>{formatNum(yearTotals[col.key] || 0, 2)}</td>)}
-                <td className="px-1 py-0.5 border border-gray-700 text-center text-gray-500">–</td>
               </tr>
               <tr className="bg-blue-900/20 text-gray-400">
                 <td className="px-1 py-0.5 border border-gray-700 sticky left-0 bg-blue-950/40 z-10 text-[8px] sm:text-[10px]">
@@ -466,7 +444,6 @@ export default function DashboardClient() {
                   <span className="hidden sm:inline">Povp. leto/dan</span>
                 </td>
                 {visibleCols.map(col => <td key={col.key} className="px-1 py-0.5 border border-gray-700 text-right">{formatNum(yearAvg[col.key] || 0, 2)}</td>)}
-                <td className="px-1 py-0.5 border border-gray-700 text-center text-gray-500">–</td>
               </tr>
             </>)}
           </tbody>

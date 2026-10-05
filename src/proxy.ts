@@ -21,7 +21,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Cron requests authenticated via X-Cron-Secret header
-  if (pathname === "/api/sync" || pathname === "/api/sync/mojelektro" || pathname === "/api/email/send" || pathname === "/api/weather" || pathname === "/api/solaredge/live") {
+  if (pathname === "/api/sync" || pathname === "/api/sync/mojelektro" || pathname === "/api/email/send" || pathname === "/api/solaredge/live") {
     const cronSecret = process.env.CRON_SECRET || "energy_cron_secret_123";
     const headerSecret = request.headers.get("x-cron-secret");
     if (headerSecret === cronSecret) {

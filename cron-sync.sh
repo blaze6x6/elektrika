@@ -23,16 +23,6 @@ curl -s -X POST "${APP_URL}/api/sync" \
 
 echo ""
 
-# 2. Vremenski podatki
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Prenašam vremenske podatke..."
-curl -s -X POST "${APP_URL}/api/weather" \
-  -H "Content-Type: application/json" \
-  -H "x-cron-secret: ${CRON_SECRET}" \
-  -d "{\"month\":\"${MONTH}\"}" \
-  --max-time 60
-
-echo ""
-
 # 3. Preveri opozorila (vsak dan)
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Preverjam opozorila..."
 curl -s -X POST "${APP_URL}/api/email/send" \

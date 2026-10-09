@@ -1,3 +1,12 @@
+# Štrom poraba – produkcijski compose (vlečemo sliki iz Docker Huba).
+# Vse skrivnosti nastaviš v .env (glej .env.example). Brez njih se zagon zavrne.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ── PostgreSQL baza ──
   db:
@@ -6,11 +15,13 @@ services:
     container_name: poraba-elektrika-db
     environment:
       POSTGRES_USER: ${DB_USER:-energy_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-energy_pass_123}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Nastavi DB_PASSWORD v .env}
       POSTGRES_DB: ${DB_NAME:-energydb}
       TZ: ${TZ:-Europe/Ljubljana}
+    # Baza je dostopna samo lokalno (127.0.0.1) – NE izpostavljaj je na internet.
+    # Če je ne potrebuješ od zunaj, odstrani celoten blok "ports".
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,57 +29,62 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    logging: *default-logging
 
   # ── Next.js aplikacija ──
   web:
-    image: blaze666/elektrika-web:latest
+    image: blaze666/elektrika-web:${APP_VERSION:-latest}
     container_name: poraba-elektrika-app
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3000}:3000"
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-energy_user}:${DB_PASSWORD:-energy_pass_123}@db:5432/${DB_NAME:-energydb}
-      - JWT_SECRET=${JWT_SECRET:-spremeni_me_v_produkciji_abc123}
+      - DATABASE_URL=postgresql://${DB_USER:-energy_user}:${DB_PASSWORD}@db:5432/${DB_NAME:-energydb}
+      - JWT_SECRET=${JWT_SECRET:?Nastavi JWT_SECRET v .env (openssl rand -hex 32)}
+      - CRON_SECRET=${CRON_SECRET:?Nastavi CRON_SECRET v .env (openssl rand -hex 24)}
+      - SETTINGS_KEY=${SETTINGS_KEY:-}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - NODE_ENV=production
-      # POMEMBNO: nastavi na "true" samo če imaš HTTPS (nginx + certbot)
-      # Če dostopaš prek http://ip:3000, mora biti "false"
-      - COOKIE_SECURE=${COOKIE_SECURE:-true}
-      # SolarEdge API (opcijsko)
+      # Prazno = samodejno (Secure, če je zahteva prišla prek HTTPS reverse proxyja).
+      # "true" / "false" prisili vrednost.
+      - COOKIE_SECURE=${COOKIE_SECURE:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - SMTP_ALLOW_INTERNAL=${SMTP_ALLOW_INTERNAL:-}
       - SOLAREDGE_API_KEY=${SOLAREDGE_API_KEY:-}
       - SOLAREDGE_SITE_ID=${SOLAREDGE_SITE_ID:-}
-      # MELCloud API (opcijsko)
       - MELCLOUD_EMAIL=${MELCLOUD_EMAIL:-}
       - MELCLOUD_PASSWORD=${MELCLOUD_PASSWORD:-}
       - MELCLOUD_DEVICE_ID=${MELCLOUD_DEVICE_ID:-}
       - SESSION_DAYS=${SESSION_DAYS:-180}
       - TZ=${TZ:-Europe/Ljubljana}
-      # GSRN merilne točke potrebuješ za endpoint /merilna-tocka/{gsrn}
       - MOJELEKTRO_API_KEY=${MOJELEKTRO_API_KEY:-}
       - MOJELEKTRO_EIMM=${MOJELEKTRO_EIMM:-}
       - MOJELEKTRO_GSRN_MT=${MOJELEKTRO_GSRN_MT:-}
+      - MOJELEKTRO_TS_MODE=${MOJELEKTRO_TS_MODE:-end}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       db:
         condition: service_healthy
+    logging: *default-logging
 
+  # ── Dnevna sinhronizacija (cron) ──
   cron:
-    image: blaze666/elektrika-cron:latest
+    image: blaze666/elektrika-cron:${APP_VERSION:-latest}
     container_name: poraba-elektrika-cron-sync
     restart: unless-stopped
     environment:
       - APP_URL=http://web:3000
-      - CRON_SECRET=${CRON_SECRET:-energy_cron_secret_123}
+      - CRON_SECRET=${CRON_SECRET:?Nastavi CRON_SECRET v .env}
+      - SYNC_SCHEDULE=${SYNC_SCHEDULE:-0 4 * * *}
       - TZ=${TZ:-Europe/Ljubljana}
     depends_on:
-      - web
-    command:
-      - /bin/sh
-      - -c
-      - |
-        cp /usr/share/zoneinfo/$${TZ:-Europe/Ljubljana} /etc/localtime
-        echo "$${TZ:-Europe/Ljubljana}" > /etc/timezone
-        echo "⏰ Cron zagnan. Sinhronizacija vsak dan ob 4:00 ($${TZ:-Europe/Ljubljana})"
-        echo "0 4 * * * /app/cron-sync.sh >> /var/log/cron-sync.log 2>&1" > /etc/crontabs/root
-        crond -f -l 2
+      web:
+        condition: service_healthy
+    logging: *default-logging
 
 volumes:
   pgdata:

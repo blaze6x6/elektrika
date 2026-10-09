@@ -1,91 +1,115 @@
 import { NextResponse } from "next/server";
+import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { dailyValues } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
-import { fetchMonthBlockData, fetchMerilnoMesto, fetchMerilnaTocka, fetchReadingTypes, fetchReadingQualities } from "@/lib/mojelektro";
+import { appSettings } from "@/db/schema";
+import { requireAdmin, requireCronOrUser } from "@/lib/guard";
+import { logAction } from "@/lib/audit";
+import { badRequest, readJson } from "@/lib/http";
+import { isValidMonth } from "@/lib/validate";
+import { upsertDailyValues, type DailyInput } from "@/lib/sync-store";
+import { Cooldown } from "@/lib/rate-limit";
+import {
+  extractContractedPower,
+  fetchMerilnaTocka,
+  fetchMerilnoMesto,
+  fetchMonthBlockData,
+  fetchReadingQualities,
+  fetchReadingTypes,
+} from "@/lib/mojelektro";
 
-async function saveValue(dateStr: string, columnKey: string, value: number) {
-  if (!dateStr || typeof dateStr !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    console.warn(`Preskakujem neveljaven datum: "${dateStr}" za stolpec ${columnKey}`);
-    return;
-  }
-  const [existing] = await db
-    .select().from(dailyValues)
-    .where(and(eq(dailyValues.date, dateStr), eq(dailyValues.columnKey, columnKey)));
-  if (existing) {
-    await db.update(dailyValues)
-      .set({ value, isManual: false, updatedAt: new Date() })
-      .where(and(eq(dailyValues.date, dateStr), eq(dailyValues.columnKey, columnKey)));
-  } else {
-    await db.insert(dailyValues).values({ date: dateStr, columnKey, value, isManual: false });
-  }
-}
+const cooldown = new Cooldown(30_000);
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const { month } = body;
+  const auth = await requireCronOrUser(request);
+  if (!auth.ok) return auth.res;
 
-  if (!month) return NextResponse.json({ error: "month required" }, { status: 400 });
+  const body = await readJson(request);
+  const month = body?.month;
+  if (!isValidMonth(month)) return badRequest("month (YYYY-MM) required");
+  const force = body?.force === true;
 
   const token = process.env.MOJELEKTRO_API_KEY;
   const usagePoint = process.env.MOJELEKTRO_EIMM; // EIMM identifikator
-
-  const results: string[] = [];
-
   if (!token || !usagePoint) {
     return NextResponse.json({
-      success: false,
-      results: ["❌ MojElektro: Nastavi MOJELEKTRO_API_KEY in MOJELEKTRO_EIMM v .env"]
+      success: true,
+      results: ["ℹ️ MojElektro: ni nastavljen (MOJELEKTRO_API_KEY in MOJELEKTRO_EIMM v .env)"],
     });
   }
 
-  try {
-    // Pridobi podatke po blokih za cel mesec
-    const blockData = await fetchMonthBlockData(token, usagePoint, month);
-
-    if (blockData.size === 0) {
-      results.push("⚠️ MojElektro: Ni podatkov za ta mesec (podatki so dosegljivi z ~24h zamikom)");
-    } else {
-      let savedDays = 0;
-      for (const [dateStr, day] of blockData) {
-        await saveValue(dateStr, "me_blok1", day.blok1);
-        await saveValue(dateStr, "me_blok2", day.blok2);
-        await saveValue(dateStr, "me_blok3", day.blok3);
-        await saveValue(dateStr, "me_blok4", day.blok4);
-        await saveValue(dateStr, "me_blok5", day.blok5);
-        await saveValue(dateStr, "me_uvoz", day.uvoz);
-        await saveValue(dateStr, "me_oddaja", day.oddaja);
-        savedDays++;
-      }
-      results.push(`✅ MojElektro: Shranjenih ${savedDays} dni (bloki + oddaja)`);
+  if (auth.actor !== "cron") {
+    const wait = cooldown.hit(`me:${month}`);
+    if (wait > 0) {
+      return NextResponse.json(
+        { success: false, results: [`⚠️ MojElektro sinhronizacija je bila pravkar zagnana. Poskusi znova čez ${wait} s.`] },
+        { status: 429 }
+      );
     }
-
-    // Samodejno posodobi dogovorjene moči iz API-ja v nastavitve
-    if (process.env.MOJELEKTRO_GSRN_MT) {
-      const mtData = await fetchMerilnaTocka(token, process.env.MOJELEKTRO_GSRN_MT);
-      const { extractContractedPower } = await import("@/lib/mojelektro");
-      const powers = extractContractedPower(mtData);
-      if (powers) {
-        const { appSettings } = await import("@/db/schema");
-        for (const [k, v] of Object.entries(powers)) {
-          await db.insert(appSettings).values({ key: `tariff_${k}`, value: String(v) })
-            .onConflictDoUpdate({ target: appSettings.key, set: { value: String(v) } });
-        }
-        results.push("✅ MojElektro: Posodobljene dogovorjene moči (Bloki 1-5)");
-      }
-    }
-
-  } catch (err) {
-    results.push(`❌ MojElektro: ${err instanceof Error ? err.message : "Napaka"}`);
   }
 
-  return NextResponse.json({ success: true, results });
+  const results: string[] = [];
+  let failed = false;
+
+  try {
+    const stamp = process.env.MOJELEKTRO_TS_MODE === "start" ? "start" : "end";
+    const res = await fetchMonthBlockData(token, usagePoint, month, stamp);
+    const blockData = res.days;
+    if (blockData.size === 0) {
+      results.push(
+        `⚠️ MojElektro: ni podatkov za ta mesec (odčitkov: ${res.readings}). Podatki so dosegljivi z zamikom enega ali več dni.`
+      );
+    } else {
+      const rows: DailyInput[] = [];
+      for (const [dateStr, day] of blockData) {
+        rows.push(
+          { date: dateStr, columnKey: "me_blok1", value: day.blok1 },
+          { date: dateStr, columnKey: "me_blok2", value: day.blok2 },
+          { date: dateStr, columnKey: "me_blok3", value: day.blok3 },
+          { date: dateStr, columnKey: "me_blok4", value: day.blok4 },
+          { date: dateStr, columnKey: "me_blok5", value: day.blok5 },
+          { date: dateStr, columnKey: "me_uvoz", value: day.uvoz },
+          { date: dateStr, columnKey: "me_oddaja", value: day.oddaja }
+        );
+      }
+      const saved = await upsertDailyValues(rows, { manual: false, force });
+      const dates = [...blockData.keys()].sort();
+      results.push(`✅ MojElektro: shranjenih ${blockData.size} dni (bloki iz 15-min odčitkov + oddaja)`);
+      results.push(
+        `ℹ️ MojElektro: ${res.readings} odčitkov, ${dates[0]} … ${dates[dates.length - 1]} (žig = ${stamp === "end" ? "konec" : "začetek"} intervala, endTime=${res.endTimeUsed})`
+      );
+      if (saved.skipped > 0) results.push(`ℹ️ Preskočenih ${saved.skipped} ročno vnesenih vrednosti.`);
+    }
+
+    // Samodejno posodobi dogovorjene moči iz API-ja v nastavitve (samo veljavne vrednosti)
+    const gsrn = process.env.MOJELEKTRO_GSRN_MT;
+    if (gsrn) {
+      const powers = extractContractedPower(await fetchMerilnaTocka(token, gsrn));
+      if (powers) {
+        const rows = Object.entries(powers).map(([k, v]) => ({ key: `tariff_${k}`, value: String(v) }));
+        await db
+          .insert(appSettings)
+          .values(rows)
+          .onConflictDoUpdate({ target: appSettings.key, set: { value: sql`excluded.value` } });
+        results.push(`✅ MojElektro: Posodobljene dogovorjene moči (${Object.keys(powers).length} blokov)`);
+      }
+    }
+  } catch (err) {
+    failed = true;
+    const msg = err instanceof Error ? err.message : "Napaka";
+    console.error("[sync/mojelektro]", msg);
+    results.push(`❌ MojElektro: ${msg}`);
+  }
+
+  await logAction(auth.actor, "sync_mojelektro", `${month}${failed ? " (napaka)" : ""}`);
+  return NextResponse.json({ success: !failed, results }, { status: failed ? 502 : 200 });
 }
 
+/** Diagnostika (samo skrbnik). */
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const type = searchParams.get("type");
+  const g = await requireAdmin();
+  if (!g.ok) return g.res;
 
+  const type = new URL(request.url).searchParams.get("type");
   const token = process.env.MOJELEKTRO_API_KEY;
   const usagePoint = process.env.MOJELEKTRO_EIMM;
   const gsrnMt = process.env.MOJELEKTRO_GSRN_MT;
@@ -94,28 +118,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "API ključ ni nastavljen" }, { status: 400 });
   }
 
-  if (type === "merilno-mesto") {
-    const data = await fetchMerilnoMesto(token, usagePoint);
-    return NextResponse.json({ data });
-  }
-
-  if (type === "merilna-tocka") {
-    if (!gsrnMt) {
-      return NextResponse.json({ error: "Nastavi MOJELEKTRO_GSRN_MT v .env" }, { status: 400 });
+  try {
+    if (type === "merilno-mesto") return NextResponse.json({ data: await fetchMerilnoMesto(token, usagePoint) });
+    if (type === "merilna-tocka") {
+      if (!gsrnMt) return NextResponse.json({ error: "Nastavi MOJELEKTRO_GSRN_MT v .env" }, { status: 400 });
+      return NextResponse.json({ data: await fetchMerilnaTocka(token, gsrnMt) });
     }
-    const data = await fetchMerilnaTocka(token, gsrnMt);
-    return NextResponse.json({ data });
+    if (type === "reading-type") return NextResponse.json({ data: await fetchReadingTypes(token) });
+    if (type === "reading-qualities") return NextResponse.json({ data: await fetchReadingQualities(token) });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Napaka" }, { status: 502 });
   }
 
-  if (type === "reading-type") {
-    const data = await fetchReadingTypes(token);
-    return NextResponse.json({ data });
-  }
-
-  if (type === "reading-qualities") {
-    const data = await fetchReadingQualities(token);
-    return NextResponse.json({ data });
-  }
-
-  return NextResponse.json({ error: "type parameter required (merilno-mesto | merilna-tocka | reading-type | reading-qualities)" }, { status: 400 });
+  return badRequest("type parameter required (merilno-mesto | merilna-tocka | reading-type | reading-qualities)");
 }

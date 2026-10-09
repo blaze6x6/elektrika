@@ -1,5 +1,6 @@
 "use client";
 
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
@@ -42,6 +43,7 @@ export default function MojElektroAdmin() {
       <header className="bg-gray-800 p-4 flex items-center gap-3 shadow-md">
         <Link href="/admin" className="text-gray-400 hover:text-white"><ArrowLeft size={20} /></Link>
         <h1 className="text-xl font-bold">MojElektro diagnostika</h1>
+        <ThemeSwitcher className="ml-auto" />
       </header>
 
       <main className="p-4 max-w-4xl mx-auto space-y-4">

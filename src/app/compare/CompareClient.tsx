@@ -1,12 +1,14 @@
 "use client";
 
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { evaluateFormula } from "@/lib/formula";
+import { buildFormulaMap, evaluateFormula } from "@/lib/formula";
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from "chart.js";
 import { Bar } from "react-chartjs-2";
 import { useTheme } from "@/lib/ThemeContext";
+import { chartColors } from "@/lib/themes";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -16,7 +18,7 @@ type DailyRow = { date: string; columnKey: string; value: number };
 const MONTH_NAMES = ["Januar", "Februar", "Marec", "April", "Maj", "Junij", "Julij", "Avgust", "September", "Oktober", "November", "December"];
 
 export default function CompareClient() {
-  const { theme } = useTheme();
+  const { isLight } = useTheme();
   const thisYear = new Date().getFullYear();
   const [yearA, setYearA] = useState(thisYear - 1);
   const [yearB, setYearB] = useState(thisYear);
@@ -41,6 +43,7 @@ export default function CompareClient() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  const formulaMap = buildFormulaMap(columns);
   const visibleCols = columns.filter(c => c.visible);
   const col = visibleCols.find(c => c.key === selectedCol) || visibleCols[0];
 
@@ -54,7 +57,7 @@ export default function CompareClient() {
     let total = 0;
     for (const dayVals of Object.values(lookup)) {
       if (column.sourceType === "formula" && column.formula) {
-        total += evaluateFormula(column.formula, dayVals);
+        total += evaluateFormula(column.formula, dayVals, formulaMap);
       } else {
         total += dayVals[column.key] ?? 0;
       }
@@ -80,16 +83,14 @@ export default function CompareClient() {
       { label: String(yearB), data: chartDataB, backgroundColor: "rgba(34,197,94,0.6)", borderColor: "#22c55e", borderWidth: 1 },
     ],
   };
-  const axisColor = theme === "light" ? "#374151" : "#9ca3af";
-  const legendColor = theme === "light" ? "#111827" : "#d1d5db";
-  const gridColor = theme === "light" ? "rgba(209,213,219,0.8)" : "rgba(75,85,99,0.3)";
+  const { axis: axisColor, legend: legendColor, grid: gridColor } = chartColors(isLight);
   const chartOptions = {
     responsive: true, maintainAspectRatio: false,
     plugins: { legend: { labels: { color: legendColor } } },
     scales: { x: { ticks: { color: axisColor }, grid: { color: gridColor } }, y: { ticks: { color: axisColor }, grid: { color: gridColor }, title: { display: true, text: "kWh", color: axisColor } } },
   };
   const diff = (a: number, b: number) => {
-    if (a === 0 && b === 0) return { text: "-", cls: "text-gray-600" };
+    if (a === 0 && b === 0) return { text: "-", cls: "text-gray-500" };
     const d = b - a;
     const pct = a !== 0 ? ((d / a) * 100).toFixed(0) : "∞";
     if (d > 0) return { text: `+${d.toFixed(1).replace(".", ",")} (${pct}%)`, cls: "text-red-400" };
@@ -102,6 +103,7 @@ export default function CompareClient() {
       <header className="bg-gray-800 p-4 flex items-center gap-3 shadow-md">
         <Link href="/" className="text-gray-400 hover:text-white"><ArrowLeft size={20} /></Link>
         <h1 className="text-xl font-bold">Primerjava let</h1>
+        <ThemeSwitcher className="ml-auto" />
       </header>
 
       <main className="p-3 max-w-3xl mx-auto space-y-4">

@@ -1,5 +1,6 @@
 "use client";
 
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import { useState, useEffect, useCallback } from "react";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
 import { sl } from "date-fns/locale";
@@ -18,8 +19,9 @@ import {
   Filler,
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
-import { evaluateFormula } from "@/lib/formula";
+import { buildFormulaMap, evaluateFormula } from "@/lib/formula";
 import { useTheme } from "@/lib/ThemeContext";
+import { chartColors } from "@/lib/themes";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler);
 
@@ -49,7 +51,7 @@ const BG_COLORS: Record<string, string> = {
 };
 
 export default function ChartsClient() {
-  const { theme } = useTheme();
+  const { isLight } = useTheme();
   const [currentMonth, setCurrentMonth] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [monthData, setMonthData] = useState<DailyRow[]>([]);
@@ -74,6 +76,7 @@ export default function ChartsClient() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  const formulaMap = buildFormulaMap(columns);
   const visibleCols = columns.filter(c => c.visible);
   const days = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
   const labels = days.map(d => format(d, "d."));
@@ -83,7 +86,7 @@ export default function ChartsClient() {
 
   const getCellValue = (dateStr: string, col: ColumnConfig): number => {
     const dayVals = lookup[dateStr] || {};
-    if (col.sourceType === "formula" && col.formula) return evaluateFormula(col.formula, dayVals);
+    if (col.sourceType === "formula" && col.formula) return evaluateFormula(col.formula, dayVals, formulaMap);
     return dayVals[col.key] ?? 0;
   };
 
@@ -104,9 +107,7 @@ export default function ChartsClient() {
       pointRadius: chartType === "line" ? 3 : 0,
     }));
 
-  const axisColor = theme === "light" ? "#374151" : "#9ca3af";
-  const legendColor = theme === "light" ? "#111827" : "#d1d5db";
-  const gridColor = theme === "light" ? "rgba(209,213,219,0.8)" : "rgba(75,85,99,0.3)";
+  const { axis: axisColor, legend: legendColor, grid: gridColor } = chartColors(isLight);
 
   const options = {
     responsive: true,
@@ -128,6 +129,7 @@ export default function ChartsClient() {
       <header className="bg-gray-800 p-4 flex items-center gap-3 shadow-md">
         <Link href="/" className="text-gray-400 hover:text-white"><ArrowLeft size={20} /></Link>
         <h1 className="text-xl font-bold">Grafi</h1>
+        <ThemeSwitcher className="ml-auto" />
       </header>
 
       <main className="p-3 max-w-5xl mx-auto space-y-4">

@@ -1,17 +1,17 @@
-import { getSession } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
+import { requirePageAdmin } from "@/lib/guard";
 import Link from "next/link";
 import { Columns3, Users, ArrowLeft, Database, Mail, History, Zap } from "lucide-react";
 
 export default async function AdminPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  await requirePageAdmin();
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
       <header className="bg-gray-800 p-4 flex items-center gap-3 shadow-md">
         <Link href="/" className="text-gray-400 hover:text-white"><ArrowLeft size={20} /></Link>
         <h1 className="text-xl font-bold">Administracija</h1>
+        <ThemeSwitcher className="ml-auto" />
       </header>
       <main className="p-4 max-w-2xl mx-auto space-y-4">
         <Link href="/admin/columns" className="block bg-gray-800 hover:bg-gray-700 rounded-xl p-6 transition-colors">
@@ -75,6 +75,7 @@ export default async function AdminPage() {
                 <li>SOLAREDGE_SITE_ID=...</li>
                 <li>MELCLOUD_EMAIL=...</li>
                 <li>MELCLOUD_PASSWORD=...</li>
+                <li>MOJELEKTRO_API_KEY=... / MOJELEKTRO_EIMM=...</li>
               </ul>
             </div>
           </div>

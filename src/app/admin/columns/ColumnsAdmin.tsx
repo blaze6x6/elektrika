@@ -1,5 +1,6 @@
 "use client";
 
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Save } from "lucide-react";
@@ -43,14 +44,24 @@ export default function ColumnsAdmin() {
   const fetchColumns = async () => {
     setLoading(true);
     const res = await fetch("/api/columns");
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) alert(json.error || `Napaka ${res.status}`);
     setColumns(json.columns || []);
     setLoading(false);
   };
 
+  // Pošlje zahtevo in ob napaki prikaže sporočilo strežnika. Vrne true ob uspehu.
+  const send = async (url: string, init: RequestInit): Promise<boolean> => {
+    const res = await fetch(url, init);
+    if (res.ok) return true;
+    const json = await res.json().catch(() => ({}));
+    alert(json.error || `Napaka ${res.status}`);
+    return false;
+  };
+
   const handleAdd = async () => {
     if (!newKey || !newLabel) return;
-    await fetch("/api/columns", {
+    const ok = await send("/api/columns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -63,6 +74,7 @@ export default function ColumnsAdmin() {
         displayOrder: columns.length,
       }),
     });
+    if (!ok) return;
     setNewKey("");
     setNewLabel("");
     setNewFormula("");
@@ -80,7 +92,7 @@ export default function ColumnsAdmin() {
   };
 
   const handleSaveEdit = async (id: number) => {
-    await fetch("/api/columns", {
+    const ok = await send("/api/columns", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -92,13 +104,14 @@ export default function ColumnsAdmin() {
         editable: editSourceType !== "formula" ? editEditable : false,
       }),
     });
+    if (!ok) return;
     setEditing(null);
     await fetchColumns();
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Ali ste prepričani, da želite izbrisati ta stolpec?")) return;
-    await fetch(`/api/columns?id=${id}`, { method: "DELETE" });
+    await send(`/api/columns?id=${id}`, { method: "DELETE" });
     await fetchColumns();
   };
 
@@ -107,19 +120,22 @@ export default function ColumnsAdmin() {
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
     if (swapIdx < 0 || swapIdx >= columns.length) return;
 
-    const other = columns[swapIdx];
-    await Promise.all([
-      fetch("/api/columns", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: col.id, displayOrder: other.displayOrder }),
-      }),
-      fetch("/api/columns", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: other.id, displayOrder: col.displayOrder }),
-      }),
-    ]);
+    // Premik zamenja mesti v seznamu; nato vsem stolpcem dodelimo zaporedne številke,
+    // da ne pride do enakih vrednosti displayOrder (npr. več stolpcev s privzetimi 99).
+    const arr = [...columns];
+    [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+    await Promise.all(
+      arr
+        .map((c, i) => ({ c, i }))
+        .filter(({ c, i }) => c.displayOrder !== i)
+        .map(({ c, i }) =>
+          send("/api/columns", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: c.id, displayOrder: i }),
+          })
+        )
+    );
     await fetchColumns();
   };
 
@@ -128,6 +144,7 @@ export default function ColumnsAdmin() {
       case "manual": return "Ročno";
       case "solaredge": return "SolarEdge";
       case "melcloud": return "MELCloud";
+      case "mojelektro": return "MojElektro";
       case "formula": return "Formula";
       default: return s;
     }
@@ -140,6 +157,7 @@ export default function ColumnsAdmin() {
           <ArrowLeft size={20} />
         </Link>
         <h1 className="text-xl font-bold">Upravljanje stolpcev</h1>
+        <ThemeSwitcher className="ml-auto" />
       </header>
 
       <main className="p-4 max-w-3xl mx-auto">
@@ -194,6 +212,7 @@ export default function ColumnsAdmin() {
                   <option value="manual">Ročno</option>
                   <option value="solaredge">SolarEdge</option>
                   <option value="melcloud">MELCloud</option>
+                  <option value="mojelektro">MojElektro</option>
                   <option value="formula">Formula (izračun)</option>
                 </select>
               </div>
@@ -259,6 +278,7 @@ export default function ColumnsAdmin() {
                           <option value="manual">Ročno</option>
                           <option value="solaredge">SolarEdge</option>
                           <option value="melcloud">MELCloud</option>
+                  <option value="mojelektro">MojElektro</option>
                           <option value="formula">Formula</option>
                         </select>
                       </div>

@@ -1,8 +1,7 @@
-import { getSession } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requirePageAdmin } from "@/lib/guard";
 import AuditClient from "./AuditClient";
+
 export default async function AuditPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  await requirePageAdmin();
   return <AuditClient />;
 }

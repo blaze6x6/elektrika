@@ -1,25 +1,35 @@
 "use client";
 
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import { useState, useEffect, useCallback } from "react";
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
 import { sl } from "date-fns/locale";
 import { ArrowLeft, ChevronLeft, ChevronRight, Settings, Calculator } from "lucide-react";
 import Link from "next/link";
-import { evaluateFormula } from "@/lib/formula";
-import { useTheme } from "@/lib/ThemeContext";
+import { buildFormulaMap, evaluateFormula } from "@/lib/formula";
+import { DEFAULT_TARIFF } from "@/lib/tariff";
+import { activeBlocksForMonth, blocksOccurringOn, isHighSeasonMonth, solarBlockShares, type Block } from "@/lib/blocks";
 
 type ColumnConfig = { id: number; key: string; label: string; displayOrder: number; sourceType: string; formula: string | null; unit: string | null; editable: boolean; visible: boolean };
 type DailyRow = { date: string; columnKey: string; value: number };
 type Tariff = Record<string, number>;
 
 export default function CalculatorClient() {
-  const { theme } = useTheme();
   const [currentMonth, setCurrentMonth] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [monthData, setMonthData] = useState<DailyRow[]>([]);
   const [tariff, setTariff] = useState<Tariff>({});
   const [loading, setLoading] = useState(true);
   const [showTariff, setShowTariff] = useState(false);
+  const [rezim, setRezimState] = useState<"letno" | "bloki">("letno");
+
+  useEffect(() => {
+    try { if (localStorage.getItem("calc_rezim") === "bloki") setRezimState("bloki"); } catch { /* brez shrambe */ }
+  }, []);
+  const setRezim = (r: "letno" | "bloki") => {
+    setRezimState(r);
+    try { localStorage.setItem("calc_rezim", r); } catch { /* brez shrambe */ }
+  };
 
   const monthKey = format(currentMonth, "yyyy-MM");
 
@@ -38,6 +48,8 @@ export default function CalculatorClient() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  const formulaMap = buildFormulaMap(columns);
+
   // Build lookup
   const lookup: Record<string, Record<string, number>> = {};
   monthData.forEach(r => { if (!lookup[r.date]) lookup[r.date] = {}; lookup[r.date][r.columnKey] = r.value ?? 0; });
@@ -51,7 +63,7 @@ export default function CalculatorClient() {
     return days.reduce((sum, d) => {
       const dateStr = format(d, "yyyy-MM-dd");
       const dayVals = lookup[dateStr] || {};
-      if (col.sourceType === "formula" && col.formula) return sum + evaluateFormula(col.formula, dayVals);
+      if (col.sourceType === "formula" && col.formula) return sum + evaluateFormula(col.formula, dayVals, formulaMap);
       return sum + (dayVals[key] ?? 0);
     }, 0);
   };
@@ -70,80 +82,135 @@ export default function CalculatorClient() {
   const meOddaja = getTotal("me_oddaja"); // A- (Oddaja v omrežje)
   const hasMojelektro = meUvoz > 0;
 
-  const t = tariff;
+  // Privzete vrednosti dopolnijo manjkajoče ključe; nastavljena 0 je veljavna vrednost (zato ??, ne ||).
+  const t: Tariff = { ...DEFAULT_TARIFF, ...tariff };
   const mNum = currentMonth.getMonth() + 1;
-  const isHighSeason = mNum === 11 || mNum === 12 || mNum === 1 || mNum === 2;
-  const activeBlocks = isHighSeason ? [1, 2, 3, 4] : [2, 3, 4, 5];
-  const aktivniBloki = activeBlocks;
+  const isHighSeason = isHighSeasonMonth(mNum);
+  const activeBlocks = activeBlocksForMonth(mNum);
+  const aktivniBloki: number[] = activeBlocks;
 
-  // Samooskrba = Proizvodnja (SolarEdge) - Oddaja (MojElektro)
-  // To je energija, ki smo jo porabili neposredno iz sonca
-  const samooskrbaKwh = Math.max(0, solarnaProizvodnja - meOddaja);
-
-  /**
-   * Hipotetična poraba po blokih (kot da SE ne bi bilo):
-   * Dejanski uvoz (A+) + Samooskrba (ki bi bila uvoz).
-   * Samooskrbo porazdelimo v "dnevne" bloke 1, 2 in 3.
-   */
-  const hipoBlok1 = isHighSeason ? meBlok1 + (samooskrbaKwh * 0.6) : 0; // Večina sonca v Blok 1
-  const hipoBlok2 = isHighSeason ? meBlok2 + (samooskrbaKwh * 0.4) : meBlok2 + (samooskrbaKwh * 0.7);
-  const hipoBlok3 = isHighSeason ? meBlok3 : meBlok3 + (samooskrbaKwh * 0.3);
-  const hipoBlok4 = meBlok4;
-  const hipoBlok5 = meBlok5;
-
-  const hipoSkupnaPoraba = hasMojelektro ? (hipoBlok1 + hipoBlok2 + hipoBlok3 + hipoBlok4 + hipoBlok5) : skupnaPoraba;
-
-  const calcDogMoc = () => {
-    let sum = 0;
-    if (activeBlocks.includes(1)) sum += (t.moc_blok1 ?? 7.2) * (t.cena_moc_blok1 ?? 3.82301);
-    if (activeBlocks.includes(2)) sum += (t.moc_blok2 ?? 7.2) * (t.cena_moc_blok2 ?? 1.09230);
-    if (activeBlocks.includes(3)) sum += (t.moc_blok3 ?? 7.2) * (t.cena_moc_blok3 ?? 0.28902);
-    if (activeBlocks.includes(4)) sum += (t.moc_blok4 ?? 7.2) * (t.cena_moc_blok4 ?? 0.02436);
-    if (activeBlocks.includes(5)) sum += (t.moc_blok5 ?? 7.2) * (t.cena_moc_blok5 ?? 0.00245);
-    return sum;
+  const dayValue = (key: string, dateStr: string): number => {
+    const col = columns.find(c => c.key === key);
+    const dayVals = lookup[dateStr] || {};
+    if (col?.sourceType === "formula" && col.formula) return evaluateFormula(col.formula, dayVals, formulaMap);
+    return dayVals[key] ?? 0;
   };
 
-  const dogMocStrosek = calcDogMoc();
-  const spteMoc = t.moc_blok1 ?? 7.2;
+  // Samooskrba po blokih: najprej dejanske urne meritve SolarEdge (se_samo_blok1..5),
+  // sicer ocena = (proizvodnja − oddaja) razporejena po urnem profilu sonca.
+  // Če imamo MojElektro, v hipotetični izračun štejemo samo dni, za katere ima podatke tudi MojElektro
+  // (sicer bi bil uvoz za nekaj dni, samooskrba pa za cel mesec).
+  const meBloki = [meBlok1, meBlok2, meBlok3, meBlok4, meBlok5];
+  const samooskrbaPoBlokih = [0, 0, 0, 0, 0];
+  let samooskrbaKwh = 0;       // ves mesec (prikaz)
+  let daysMeasured = 0;        // dni iz meritev, vključenih v izračun
+  let daysEstimated = 0;       // dni z oceno, vključenih v izračun
+  let daysWithSolar = 0;
+  let daysWithMe = 0;
+  const kupSum = [0, 0, 0, 0, 0]; // SolarEdge Purchased po blokih (samo dni, ko so podatki tudi v MojElektro)
+  const meCmpSum = [0, 0, 0, 0, 0];
+  days.forEach(d => {
+    const ds = format(d, "yyyy-MM-dd");
+    const meDay = [1, 2, 3, 4, 5].map(b => dayValue(`me_blok${b}`, ds));
+    const hasMeDay = meDay.reduce((a, b) => a + b, 0) > 0;
+    if (hasMeDay) daysWithMe++;
+    if (dayValue("solarna", ds) > 0) daysWithSolar++;
+
+    const measured = [1, 2, 3, 4, 5].map(b => dayValue(`se_samo_blok${b}`, ds));
+    const measuredSum = measured.reduce((a, b) => a + b, 0);
+    const self = measuredSum > 0 ? measuredSum : Math.max(0, dayValue("solarna", ds) - dayValue("me_oddaja", ds));
+    samooskrbaKwh += self;
+
+    if (hasMojelektro && !hasMeDay) return;
+    const kup = [1, 2, 3, 4, 5].map(b => dayValue(`se_kup_blok${b}`, ds));
+    if (hasMeDay && kup.reduce((a, b) => a + b, 0) > 0) {
+      kup.forEach((v, i) => { kupSum[i] += v; meCmpSum[i] += meDay[i]; });
+    }
+    if (measuredSum > 0) {
+      daysMeasured++;
+      measured.forEach((v, i) => { samooskrbaPoBlokih[i] += v; });
+    } else if (self > 0) {
+      daysEstimated++;
+      solarBlockShares(ds).forEach((sh, i) => { samooskrbaPoBlokih[i] += self * sh; });
+    }
+  });
+  const coverageGap = hasMojelektro && daysWithMe < daysWithSolar;
+  // Kontrola: uvoz po blokih po SolarEdge (Purchased) proti MojElektro. Večje razlike = napačna preslikava blokov ali zamik ur.
+  const cmpBad: number[] = [];
+  if (kupSum.reduce((a, b) => a + b, 0) > 0) {
+    kupSum.forEach((v, i) => { if (Math.abs(v - meCmpSum[i]) > Math.max(1, meCmpSum[i] * 0.1)) cmpBad.push(i + 1); });
+  }
+
+  /** Hipotetična poraba po blokih (kot da sončne ne bi bilo) = dejanski uvoz (A+) + samooskrba po urnem profilu sonca. */
+  const hipoBloki = meBloki.map((v, i) => v + samooskrbaPoBlokih[i]);
+  const hipoSkupnaPoraba = hasMojelektro ? hipoBloki.reduce((a, b) => a + b, 0) : skupnaPoraba;
+
+  // Preverjanje podatkov MojElektro: ali so bloki skladni z uradnim urnikom in uvozom?
+  const blockSum = meBloki.reduce((a, b) => a + b, 0);
+  const sumMismatch = hasMojelektro && Math.abs(blockSum - meUvoz) > Math.max(0.5, meUvoz * 0.01);
+  let impossibleDays = 0;
+  if (hasMojelektro) {
+    days.forEach(d => {
+      const ds = format(d, "yyyy-MM-dd");
+      const occurs = blocksOccurringOn(ds);
+      for (let b = 1; b <= 5; b++) {
+        if (dayValue(`me_blok${b}`, ds) > 0.01 && !occurs.includes(b as Block)) { impossibleDays++; break; }
+      }
+    });
+  }
+
+  const moc = (b: number) => t[`moc_blok${b}`] * t[`cena_moc_blok${b}`];
+  const dogMocStrosek = activeBlocks.reduce((sum, b) => sum + moc(b), 0);
+  const spteMoc = t.moc_blok1;
+
+  // Letno netiranje (priključno soglasje do 2023) ali obračun po blokih za vso prevzeto energijo (od 2024).
+  const netRezim = rezim;
 
   // ═══════════════════════════════════════════
   // SCENARIJ 1: BREZ sončne elektrarne
   // ═══════════════════════════════════════════
-  const brezSE_energija = hipoSkupnaPoraba * (t.cena_energija_et || 0.1299);
-  const brezSE_omreznina_energija = hasMojelektro ? 
-      (hipoBlok1 * (t.cena_omreznina_blok1 || 0.01864)) + // Uporabimo ceno omrežnine na blok
-      (hipoBlok2 * (t.cena_omreznina_blok2 || 0.01864)) +
-      (hipoBlok3 * (t.cena_omreznina_blok3 || 0.01864)) +
-      (hipoBlok4 * (t.cena_omreznina_blok4 || 0.01864)) +
-      (hipoBlok5 * (t.cena_omreznina_blok5 || 0.01864))
-    : hipoSkupnaPoraba * (t.cena_omreznina_et || 0.01864);
+  const costEnergy = (kwh: number) => kwh * t.cena_energija_et;
+  const costOmrEnergija = (bloki: number[], total: number) =>
+    hasMojelektro ? bloki.reduce((sum, v, i) => sum + v * t[`cena_omreznina_blok${i + 1}`], 0) : total * t.cena_omreznina_et;
 
+  const brezSE_energija = costEnergy(hipoSkupnaPoraba);
+  const brezSE_omreznina_energija = costOmrEnergija(hipoBloki, hipoSkupnaPoraba);
   const brezSE_dog_moc = dogMocStrosek;
-  const brezSE_prisp_trg = hipoSkupnaPoraba * (t.prisp_operater_trg || 0.00013);
-  const brezSE_prisp_ucinkovitost = hipoSkupnaPoraba * (t.prisp_energ_ucinkovitost || 0.0008);
-  const brezSE_prisp_spte = spteMoc * (t.prisp_spte_ove || 0.77562);
-  const brezSE_trosarina = hipoSkupnaPoraba * (t.trosarina || 0.00153);
-  const brezSE_nadomestilo = t.mesecno_nadomestilo || 1.99;
-  
+  const brezSE_prisp_trg = hipoSkupnaPoraba * t.prisp_operater_trg;
+  const brezSE_prisp_ucinkovitost = hipoSkupnaPoraba * t.prisp_energ_ucinkovitost;
+  const brezSE_prisp_spte = spteMoc * t.prisp_spte_ove;
+  const brezSE_trosarina = hipoSkupnaPoraba * t.trosarina;
+  const brezSE_nadomestilo = t.mesecno_nadomestilo;
+  const brezSE_eko = t.eko_popust;
+
   const brezSE_skupaj_brezDDV =
     brezSE_energija + brezSE_omreznina_energija + brezSE_dog_moc +
     brezSE_prisp_trg + brezSE_prisp_ucinkovitost + brezSE_prisp_spte +
-    brezSE_trosarina + brezSE_nadomestilo;
-  const brezSE_ddv = brezSE_skupaj_brezDDV * (t.ddv_stopnja || 0.22);
+    brezSE_trosarina + brezSE_nadomestilo + brezSE_eko;
+  const brezSE_ddv = brezSE_skupaj_brezDDV * t.ddv_stopnja;
   const brezSE_skupaj = brezSE_skupaj_brezDDV + brezSE_ddv;
 
   // ═══════════════════════════════════════════
   // SCENARIJ 2: S sončno elektrarno (dejanski)
   // ═══════════════════════════════════════════
-  // EZ-1 samooskrba: mesečno plačaš SAMO fiksne stroške.
-  // Energija (kWh) se neto obračuna LETNO.
+  // "letno": mesečno plačaš samo fiksne stroške, energija se neto obračuna letno.
+  // "bloki": plačaš vso prevzeto energijo iz omrežja (A+) po blokih; oddaja se ne všteva (previdna ocena).
+  const uvozKwh = hasMojelektro ? meUvoz : Math.max(0, skupnaPoraba - solarnaProizvodnja);
+  const sSE_blokiAktivni = netRezim === "bloki";
+  const sSE_energija = sSE_blokiAktivni ? costEnergy(uvozKwh) : 0;
+  const sSE_omreznina_energija = sSE_blokiAktivni ? costOmrEnergija(meBloki, uvozKwh) : 0;
+  const sSE_prisp_trg = sSE_blokiAktivni ? uvozKwh * t.prisp_operater_trg : 0;
+  const sSE_prisp_ucinkovitost = sSE_blokiAktivni ? uvozKwh * t.prisp_energ_ucinkovitost : 0;
+  const sSE_trosarina = sSE_blokiAktivni ? uvozKwh * t.trosarina : 0;
   const sSE_dog_moc = dogMocStrosek;
   const sSE_prisp_spte = brezSE_prisp_spte;
-  const sSE_nadomestilo = t.mesecno_nadomestilo || 1.99;
-  const sSE_eko = t.eko_popust || -1;
+  const sSE_nadomestilo = t.mesecno_nadomestilo;
+  const sSE_eko = t.eko_popust;
 
-  const sSE_skupaj_brezDDV = sSE_dog_moc + sSE_prisp_spte + sSE_nadomestilo + sSE_eko;
-  const sSE_ddv = sSE_skupaj_brezDDV * (t.ddv_stopnja || 0.22);
+  const sSE_skupaj_brezDDV =
+    sSE_energija + sSE_omreznina_energija + sSE_dog_moc + sSE_prisp_trg + sSE_prisp_ucinkovitost +
+    sSE_prisp_spte + sSE_trosarina + sSE_nadomestilo + sSE_eko;
+  const sSE_ddv = sSE_skupaj_brezDDV * t.ddv_stopnja;
   const sSE_skupaj = sSE_skupaj_brezDDV + sSE_ddv;
 
   // Prihranek
@@ -166,11 +233,16 @@ export default function CalculatorClient() {
     const payload: Tariff = {};
     keys.forEach(k => { payload[k] = tariff[k] ?? 0; });
 
-    await fetch("/api/tariff", {
+    const res = await fetch("/api/tariff", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tariff: payload }),
     });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(res.status === 403 ? "Tarife lahko spreminja samo skrbnik." : `Shranjevanje ni uspelo: ${j.error || res.status}`);
+      return;
+    }
     setShowTariff(false);
   };
 
@@ -205,9 +277,12 @@ export default function CalculatorClient() {
           <Link href="/" className="text-gray-400 hover:text-white"><ArrowLeft size={20} /></Link>
           <h1 className="text-lg font-bold flex items-center gap-2"><Calculator size={20} /> Kalkulator</h1>
         </div>
-        <button onClick={() => setShowTariff(!showTariff)} className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs">
-          <Settings size={14} /> Tarife
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowTariff(!showTariff)} className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs">
+            <Settings size={14} /> Tarife
+          </button>
+          <ThemeSwitcher />
+        </div>
       </header>
 
       <main className="p-3 max-w-2xl mx-auto space-y-4">
@@ -249,23 +324,72 @@ export default function CalculatorClient() {
             { label: "Prisp. SPTE in OVE", value: brezSE_prisp_spte, sub: true },
             { label: "Trošarina", value: brezSE_trosarina, sub: true },
             { label: "Mesečno nadomestilo", value: brezSE_nadomestilo, sub: true },
+            { label: "Eko popust", value: brezSE_eko, sub: true, color: "text-green-400" },
             { label: "Osnova brez DDV", value: brezSE_skupaj_brezDDV, bold: true },
-            { label: `DDV (${((t.ddv_stopnja || 0.22) * 100).toFixed(0)}%)`, value: brezSE_ddv, sub: true },
+            { label: `DDV (${(t.ddv_stopnja * 100).toFixed(0)}%)`, value: brezSE_ddv, sub: true },
           ], brezSE_skupaj, "SKUPAJ z DDV")}
 
-          {/* Scenario 2: S sončno – samo fiksni stroški */}
-          {renderTable("S sončno elektrarno (EZ-1)", "🟢", [
+          {/* Način obračuna s sončno */}
+          <div className="bg-gray-800 rounded-xl p-3 text-xs space-y-2">
+            <div className="text-gray-400">Obračun s sončno elektrarno:</div>
+            <div className="grid grid-cols-2 gap-1">
+              <button onClick={() => setRezim("letno")} className={`rounded px-2 py-1.5 ${rezim === "letno" ? "bg-blue-600 text-white" : "bg-gray-700 hover:bg-gray-600"}`}>
+                Letno netiranje<span className="block text-[9px] opacity-80">soglasje do 2023</span>
+              </button>
+              <button onClick={() => setRezim("bloki")} className={`rounded px-2 py-1.5 ${rezim === "bloki" ? "bg-blue-600 text-white" : "bg-gray-700 hover:bg-gray-600"}`}>
+                Po blokih (brez netiranja)<span className="block text-[9px] opacity-80">soglasje od 2024</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Scenario 2: S sončno */}
+          {renderTable(rezim === "letno" ? "S sončno elektrarno (letno netiranje)" : "S sončno elektrarno (obračun po blokih)", "🟢", [
+            ...(sSE_blokiAktivni ? [
+              { label: "Električna energija", value: sSE_energija, sub: true },
+              { label: "Omrežnina (energija)", value: sSE_omreznina_energija, sub: true },
+            ] : []),
             { label: "Omrežnina (moč)", value: sSE_dog_moc, sub: true },
+            ...(sSE_blokiAktivni ? [
+              { label: "Prisp. operater trga", value: sSE_prisp_trg, sub: true },
+              { label: "Prisp. energ. učinkovitost", value: sSE_prisp_ucinkovitost, sub: true },
+            ] : []),
             { label: "Prisp. SPTE in OVE", value: sSE_prisp_spte, sub: true },
+            ...(sSE_blokiAktivni ? [{ label: "Trošarina", value: sSE_trosarina, sub: true }] : []),
             { label: "Mesečno nadomestilo", value: sSE_nadomestilo, sub: true },
             { label: "Eko popust", value: sSE_eko, sub: true, color: "text-green-400" },
             { label: "Osnova brez DDV", value: sSE_skupaj_brezDDV, bold: true },
-            { label: `DDV (${((t.ddv_stopnja || 0.22) * 100).toFixed(0)}%)`, value: sSE_ddv, sub: true },
+            { label: `DDV (${(t.ddv_stopnja * 100).toFixed(0)}%)`, value: sSE_ddv, sub: true },
           ], sSE_skupaj, "SKUPAJ z DDV")}
 
           <div className="bg-gray-800/50 rounded p-2 text-[10px] text-gray-500 text-center">
-            ℹ️ EZ-1 samooskrba: energija se neto obračuna <strong>letno</strong>. Mesečno plačuješ samo fiksne stroške.
+            {rezim === "letno"
+              ? <>ℹ️ Letno netiranje: energija se neto obračuna <strong>letno</strong>, mesečno plačuješ samo fiksne stroške. Prihranek je v tem primeru zgornja meja.</>
+              : <>ℹ️ Od 2024 plačaš vso prevzeto energijo po blokih; oddaja v omrežje se ne všteva (dobropis dobavitelja ni upoštevan).</>}
           </div>
+
+          {coverageGap && (
+            <div className="bg-yellow-900/40 border border-yellow-700 rounded p-2 text-[11px] text-yellow-300">
+              ⚠️ MojElektro ima podatke za {daysWithMe} dni, SolarEdge pa za {daysWithSolar}. Energijski del izračuna velja samo za dni z MojElektro podatki;
+              fiksni stroški so mesečni. Po novi sinhronizaciji MojElektro (podatki so z zamikom) se bo izračun dopolnil.
+            </div>
+          )}
+
+          {cmpBad.length > 0 && (
+            <div className="bg-yellow-900/40 border border-yellow-700 rounded p-2 text-[11px] text-yellow-300">
+              ⚠️ Kontrola blokov: uvoz po SolarEdge se pri blokih {cmpBad.join(", ")} razlikuje od MojElektro
+              ({cmpBad.map(b => `B${b}: ${fmtKwh(kupSum[b - 1])} proti ${fmtKwh(meCmpSum[b - 1])} kWh`).join("; ")}).
+              Možen vzrok: drugačna preslikava blokov v MojElektro ali zamik ur v časovnih žigih.
+            </div>
+          )}
+
+          {(sumMismatch || impossibleDays > 0) && (
+            <div className="bg-yellow-900/40 border border-yellow-700 rounded p-2 text-[11px] text-yellow-300">
+              ⚠️ Podatki MojElektro se ne ujemajo z uradnim urnikom blokov
+              {sumMismatch && <> (vsota blokov {fmtKwh(blockSum)} kWh ≠ uvoz {fmtKwh(meUvoz)} kWh)</>}
+              {impossibleDays > 0 && <> ({impossibleDays} dni s porabo v bloku, ki ta dan ne obstaja)</>}.
+              Preveri preslikavo blokov v MojElektro diagnostiki; izračun po blokih je lahko napačen.
+            </div>
+          )}
 
           {/* MojElektro bloki */}
           {hasMojelektro && (
@@ -293,6 +417,8 @@ export default function CalculatorClient() {
               </div>
               <div className="text-xs text-gray-500 text-center">
                 {isHighSeason ? "🔴 Višja sezona: bloki 1–4 aktivni" : "🟡 Nižja sezona: bloki 2–5 aktivni"}
+                {samooskrbaKwh > 0 && <div className="mt-1 text-[10px]">Samooskrba po blokih: {daysMeasured} dni iz meritev SolarEdge (po urah){daysEstimated > 0 && <>, {daysEstimated} dni ocena po profilu sonca</>}.</div>}
+                {samooskrbaKwh > 0 && <div className="mt-1 text-[10px]">Hipotetično (brez sonca): {hipoBloki.map((v, i) => `B${i + 1} ${fmtKwh(v)}`).join(" · ")} kWh</div>}
               </div>
             </div>
           )}

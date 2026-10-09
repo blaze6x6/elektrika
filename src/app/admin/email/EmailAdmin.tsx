@@ -1,5 +1,6 @@
 "use client";
 
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Save, Send } from "lucide-react";
@@ -11,10 +12,11 @@ export default function EmailAdmin() {
   const [testResult, setTestResult] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/settings").then(r => r.json()).then(j => {
-      setSettings(j.settings || {});
-      setLoading(false);
-    });
+    fetch("/api/settings")
+      .then(r => r.json())
+      .then(j => { setSettings(j.settings || {}); })
+      .catch(() => setTestResult("❌ Nastavitev ni mogoče naložiti"))
+      .finally(() => setLoading(false));
   }, []);
 
   const update = (key: string, value: string) =>
@@ -25,26 +27,35 @@ export default function EmailAdmin() {
     "smtp_host", "smtp_port", "smtp_security",
     "smtp_user", "smtp_pass",
     "smtp_from", "smtp_from_name",
+    "smtp_allow_selfsigned",
     "alert_threshold",
   ];
 
   const handleSave = async () => {
     setSaving(true);
-    for (const key of ALL_KEYS) {
-      await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value: settings[key] || "" }),
-      });
-    }
+    const payload: Record<string, string> = {};
+    for (const key of ALL_KEYS) payload[key] = settings[key] || "";
+    // prazno geslo = "ne spreminjaj" (strežnik ga ne vrača nazaj)
+    const res = await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings: payload }),
+    });
+    const json = await res.json().catch(() => ({}));
     setSaving(false);
-    setTestResult("✅ Nastavitve shranjene!");
-    setTimeout(() => setTestResult(null), 3000);
+    if (res.ok) {
+      setSettings(prev => ({ ...prev, smtp_pass: "", smtp_pass_set: prev.smtp_pass ? "true" : prev.smtp_pass_set }));
+      setTestResult("✅ Nastavitve shranjene!");
+    } else {
+      setTestResult(`❌ ${json.error || "Shranjevanje ni uspelo"}`);
+    }
+    setTimeout(() => setTestResult(null), 4000);
   };
 
   const handleTestReport = async () => {
     setTestResult("⏳ Pošiljam testno poročilo...");
-    const month = new Date().toISOString().slice(0, 7);
+    const d = new Date();
+    const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const res = await fetch("/api/email/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -71,6 +82,7 @@ export default function EmailAdmin() {
       <header className="bg-gray-800 p-4 flex items-center gap-3 shadow-md">
         <Link href="/admin" className="text-gray-400 hover:text-white"><ArrowLeft size={20} /></Link>
         <h1 className="text-xl font-bold">E-mail nastavitve</h1>
+        <ThemeSwitcher className="ml-auto" />
       </header>
 
       <main className="p-4 max-w-2xl mx-auto space-y-6">
@@ -180,8 +192,17 @@ export default function EmailAdmin() {
                 value={settings.smtp_pass || ""}
                 onChange={e => update("smtp_pass", e.target.value)}
                 className="w-full bg-gray-700 px-3 py-2 rounded text-sm"
-                autoComplete="new-password" />
+                autoComplete="new-password"
+                placeholder={settings.smtp_pass_set === "true" ? "•••••••• (shranjeno – pusti prazno, če ne spreminjaš)" : ""} />
             </div>
+
+            <label className="flex items-center gap-2 text-xs text-gray-300">
+              <input
+                type="checkbox"
+                checked={settings.smtp_allow_selfsigned === "true"}
+                onChange={e => update("smtp_allow_selfsigned", e.target.checked ? "true" : "false")} />
+              Dovoli samopodpisano TLS potrdilo (manj varno – samo za zaupanja vreden lokalni strežnik)
+            </label>
 
             <div>
               <label className="block text-xs text-gray-400 mb-1">E-mail pošiljatelja (From)</label>

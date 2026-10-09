@@ -1,59 +1,58 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
-# ── Stage 1: Install dependencies ──
+# ── 1. Vse odvisnosti (za gradnjo) ──
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+COPY package.json package-lock.json* ./
+# Z lockfilom so gradnje ponovljive (npm ci). Brez njega (prvi zagon) pade nazaj na npm install.
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-# ── Stage 2: Build the application ──
+# ── 2. Samo produkcijske odvisnosti (za runtime in skripte) ──
+FROM base AS proddeps
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \
+ && npm cache clean --force
+
+# ── 3. Gradnja aplikacije ──
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
-
-# Next.js build needs DATABASE_URL at build time for schema imports
-# We provide a dummy URL - the real one is used at runtime
+# Next.js ob gradnji uvozi db modul; pravi URL se uporabi šele ob zagonu.
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 
 RUN npm run build
 
-# ── Stage 3: Production runner ──
+# ── 4. Produkcijska slika ──
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
-# Copy public assets
 COPY --from=builder /app/public ./public
-
-# Copy standalone output from Next.js
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# samo produkcijski node_modules (brez eslint, typescript, drizzle-kit ...)
+COPY --from=proddeps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
-# Copy node_modules for drizzle-kit and bcryptjs (needed at runtime for entrypoint)
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-
-# Copy db schema and seed files
-COPY --from=builder --chown=nextjs:nodejs /app/src/db ./src/db
-
-# Copy entrypoint script
+COPY --chown=nextjs:nodejs db/migrations ./db/migrations
+COPY --chown=nextjs:nodejs scripts ./scripts
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
 USER nextjs
-
 EXPOSE 3000
 
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/api/health" >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["./docker-entrypoint.sh"]

@@ -1,5 +1,6 @@
 "use client";
 
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2, Key } from "lucide-react";
@@ -8,6 +9,7 @@ type User = {
   id: number;
   username: string;
   isAdmin: boolean;
+  mustChangePassword?: boolean;
   createdAt: string;
 };
 
@@ -29,7 +31,8 @@ export default function UsersAdmin() {
   const fetchUsers = async () => {
     setLoading(true);
     const res = await fetch("/api/users");
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) alert(json.error || `Napaka ${res.status}`);
     setUserList(json.users || []);
     setLoading(false);
   };
@@ -45,9 +48,9 @@ export default function UsersAdmin() {
         isAdmin: newIsAdmin,
       }),
     });
-    const json = await res.json();
-    if (json.error) {
-      alert(json.error);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.error) {
+      alert(json.error || `Napaka ${res.status}`);
     } else {
       setNewUsername("");
       setNewPassword("");
@@ -59,20 +62,30 @@ export default function UsersAdmin() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Ali ste prepričani?")) return;
-    await fetch(`/api/users?id=${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/users?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      alert(json.error || `Napaka ${res.status}`);
+    }
     await fetchUsers();
   };
 
   const handleChangePw = async (id: number) => {
     if (!newPw) return;
-    await fetch("/api/users", {
+    const res = await fetch("/api/users", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, password: newPw }),
     });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      alert(json.error || `Napaka ${res.status}`);
+      return;
+    }
     setChangingPw(null);
     setNewPw("");
-    alert("Geslo spremenjeno.");
+    alert("Geslo spremenjeno. Uporabnik bo moral ob naslednji prijavi nastaviti svoje geslo.");
+    await fetchUsers();
   };
 
   return (
@@ -82,6 +95,7 @@ export default function UsersAdmin() {
           <ArrowLeft size={20} />
         </Link>
         <h1 className="text-xl font-bold">Upravljanje uporabnikov</h1>
+        <ThemeSwitcher className="ml-auto" />
       </header>
 
       <main className="p-4 max-w-2xl mx-auto">
@@ -109,9 +123,10 @@ export default function UsersAdmin() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Geslo</label>
+                <label className="block text-xs text-gray-400 mb-1">Začetno geslo (vsaj 10 znakov)</label>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full bg-gray-700 px-3 py-2 rounded text-sm"
@@ -146,6 +161,9 @@ export default function UsersAdmin() {
                     {u.isAdmin && (
                       <span className="ml-2 text-xs bg-yellow-800 text-yellow-300 px-2 py-0.5 rounded">Admin</span>
                     )}
+                    {u.mustChangePassword && (
+                      <span className="ml-2 text-xs bg-red-900 text-red-300 px-2 py-0.5 rounded">mora zamenjati geslo</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <button
@@ -166,7 +184,8 @@ export default function UsersAdmin() {
                   <div className="mt-3 flex gap-2">
                     <input
                       type="password"
-                      placeholder="Novo geslo"
+                      placeholder="Novo geslo (vsaj 10 znakov)"
+                      autoComplete="new-password"
                       value={newPw}
                       onChange={(e) => setNewPw(e.target.value)}
                       className="flex-1 bg-gray-700 px-3 py-2 rounded text-sm"

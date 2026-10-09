@@ -1,49 +1,70 @@
 #!/bin/sh
 # ──────────────────────────────────────────────
-# Energy Dashboard – mesečna sinhronizacija
-# + email opozorila + mesečno poročilo
+# Štrom poraba – dnevna sinhronizacija
+#  1. sinhronizira tekoči mesec (SolarEdge, MELCloud, MojElektro)
+#  2. 1. in 2. v mesecu sinhronizira tudi PREJŠNJI mesec (končni podatki zadnjega dne)
+#  3. preveri opozorilo za včerajšnji dan
+#  4. 1. v mesecu pošlje mesečno poročilo za prejšnji mesec
+# Skripta vrne izhodno kodo 1, če je katerikoli klic spodletel.
 # ──────────────────────────────────────────────
+set -u
 
 APP_URL="${APP_URL:-http://web:3000}"
-CRON_SECRET="${CRON_SECRET:-energy_cron_secret_123}"
+CRON_SECRET="${CRON_SECRET:-}"
+FAILED=0
 
-# Tekoči mesec (YYYY-MM)
-MONTH=$(date '+%Y-%m')
-TODAY=$(date '+%d')
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] === Dnevna sinhronizacija ==="
-
-# 1. Sync celoten tekoči mesec
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Sinhroniziram mesec ${MONTH}..."
-curl -s -X POST "${APP_URL}/api/sync" \
-  -H "Content-Type: application/json" \
-  -H "x-cron-secret: ${CRON_SECRET}" \
-  -d "{\"month\":\"${MONTH}\"}" \
-  --max-time 300
-
-echo ""
-
-# 3. Preveri opozorila (vsak dan)
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Preverjam opozorila..."
-curl -s -X POST "${APP_URL}/api/email/send" \
-  -H "Content-Type: application/json" \
-  -H "x-cron-secret: ${CRON_SECRET}" \
-  -d "{\"month\":\"${MONTH}\",\"type\":\"alert\",\"secret\":\"${CRON_SECRET}\"}" \
-  --max-time 60
-
-echo ""
-
-# 4. Mesečno poročilo (samo 1. v mesecu)
-if [ "${TODAY}" = "01" ]; then
-  # Pošlji poročilo za prejšnji mesec
-  PREV_MONTH=$(date -d "@$(($(date +%s) - 86400))" '+%Y-%m')
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Pošiljam mesečno poročilo za ${PREV_MONTH}..."
-  curl -s -X POST "${APP_URL}/api/email/send" \
-    -H "Content-Type: application/json" \
-    -H "x-cron-secret: ${CRON_SECRET}" \
-    -d "{\"month\":\"${PREV_MONTH}\",\"type\":\"report\",\"secret\":\"${CRON_SECRET}\"}" \
-    --max-time 60
-  echo ""
+if [ -z "${CRON_SECRET}" ]; then
+  log "❌ CRON_SECRET ni nastavljen – prekinjam."
+  exit 1
 fi
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] === Končano ==="
+# call <pot> <json-telo>
+call() {
+  tmp="/tmp/cron-resp.$$"
+  err="/tmp/cron-err.$$"
+  code=$(curl -sS --max-time 300 -o "${tmp}" -w '%{http_code}' -X POST "${APP_URL}$1" \
+    -H "Content-Type: application/json" \
+    -H "x-cron-secret: ${CRON_SECRET}" \
+    -d "$2" 2>"${err}") || code="000"
+  body=$(cat "${tmp}" 2>/dev/null || true)
+  curl_err=$(cat "${err}" 2>/dev/null || true)
+  rm -f "${tmp}" "${err}"
+  case "${code}" in
+    2*) log "✅ $1 [${code}] ${body}" ;;
+    *)  log "❌ $1 [${code}] ${body} ${curl_err}"; FAILED=1 ;;
+  esac
+}
+
+MONTH=$(date '+%Y-%m')
+DAY=$(date '+%d')
+MONTHS="${MONTH}"
+
+# 5 dni nazaj od 1. ali 2. v mesecu je vedno v prejšnjem mesecu
+if [ "${DAY}" -le 2 ]; then
+  PREV_MONTH=$(date -d "@$(( $(date +%s) - 5 * 86400 ))" '+%Y-%m')
+  MONTHS="${PREV_MONTH} ${MONTH}"
+fi
+
+log "=== Dnevna sinhronizacija (${MONTHS}) ==="
+
+for M in ${MONTHS}; do
+  call /api/sync "{\"month\":\"${M}\"}"
+  call /api/sync/mojelektro "{\"month\":\"${M}\"}"
+  sleep 2
+done
+
+call /api/email/send '{"type":"alert"}'
+
+if [ "${DAY}" = "01" ]; then
+  PREV_MONTH=$(date -d "@$(( $(date +%s) - 5 * 86400 ))" '+%Y-%m')
+  log "Pošiljam mesečno poročilo za ${PREV_MONTH}..."
+  call /api/email/send "{\"type\":\"report\",\"month\":\"${PREV_MONTH}\"}"
+fi
+
+if [ "${FAILED}" -ne 0 ]; then
+  log "=== Končano Z NAPAKAMI ==="
+  exit 1
+fi
+log "=== Končano ==="

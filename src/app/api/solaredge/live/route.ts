@@ -1,53 +1,49 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/guard";
+import { fetchT } from "@/lib/http";
+
+// SolarEdge omejuje API na ~300 klicev/dan; rezultat zato kratek čas hranimo.
+const TTL_MS = 30_000;
+let cache: { at: number; body: Record<string, unknown> } | null = null;
 
 export async function GET() {
-  const solaredgeKey = process.env.SOLAREDGE_API_KEY;
-  const solaredgeSite = process.env.SOLAREDGE_SITE_ID;
+  const g = await requireUser();
+  if (!g.ok) return g.res;
 
-  if (!solaredgeKey || !solaredgeSite) {
+  const key = process.env.SOLAREDGE_API_KEY;
+  const site = process.env.SOLAREDGE_SITE_ID;
+  if (!key || !site) {
     return NextResponse.json({ error: "SolarEdge API keys not set" }, { status: 400 });
   }
 
+  if (cache && Date.now() - cache.at < TTL_MS) return NextResponse.json(cache.body);
+
   try {
-    const url = `https://monitoringapi.solaredge.com/site/${solaredgeSite}/currentPowerFlow?api_key=${solaredgeKey}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const url = `https://monitoringapi.solaredge.com/site/${encodeURIComponent(site)}/currentPowerFlow?api_key=${encodeURIComponent(key)}`;
+    const res = await fetchT(url, { cache: "no-store" }, 10000);
+    if (!res.ok) return NextResponse.json({ error: `SolarEdge HTTP ${res.status}` }, { status: 502 });
     const data = await res.json();
 
     const flow = data.siteCurrentPowerFlow;
-    if (!flow) {
-      return NextResponse.json({ error: "No power flow data" }, { status: 404 });
-    }
+    if (!flow) return NextResponse.json({ error: "No power flow data" }, { status: 404 });
 
-    // Determine grid direction from connections array
-    // from: "GRID", to: "Load" = importing (buying from grid)
-    // from: "LOAD", to: "Grid" = exporting (selling to grid)
-    const connections: Array<{ from: string; to: string }> = flow.connections || [];
-    
-    let gridExporting = false; // true = oddaja v omrežje (višek)
-    for (const conn of connections) {
-      const from = conn.from?.toUpperCase();
-      const to = conn.to?.toUpperCase();
-      if (from === "LOAD" && to === "GRID") {
-        gridExporting = true;
-      }
-    }
+    // from: "LOAD", to: "Grid" = oddaja v omrežje (višek)
+    const connections: Array<{ from?: string; to?: string }> = flow.connections || [];
+    const gridExporting = connections.some(
+      (c) => c.from?.toUpperCase() === "LOAD" && c.to?.toUpperCase() === "GRID"
+    );
 
-    const unit = flow.unit || "kW";
-    const pvPower = flow.PV?.currentPower ?? 0;
-    const loadPower = flow.LOAD?.currentPower ?? 0;
-    const gridPower = flow.GRID?.currentPower ?? 0;
-
-    // Convert W to kW if needed
-    const divisor = unit === "W" ? 1000 : 1;
-
-    return NextResponse.json({
-      pv: pvPower / divisor,
-      load: loadPower / divisor,
-      grid: gridPower / divisor,
-      gridExporting, // true = oddaja (zeleno ↑), false = uvoz (rdeče ↓)
+    const divisor = flow.unit === "W" ? 1000 : 1;
+    const body = {
+      pv: (flow.PV?.currentPower ?? 0) / divisor,
+      load: (flow.LOAD?.currentPower ?? 0) / divisor,
+      grid: (flow.GRID?.currentPower ?? 0) / divisor,
+      gridExporting,
       unit: "kW",
-    });
-  } catch (err) {
-    return NextResponse.json({ error: "Failed to fetch live data" }, { status: 500 });
+    };
+    cache = { at: Date.now(), body };
+    return NextResponse.json(body);
+  } catch {
+    return NextResponse.json({ error: "Failed to fetch live data" }, { status: 502 });
   }
 }

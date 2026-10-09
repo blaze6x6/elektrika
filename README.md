@@ -1,187 +1,71 @@
-# ⚡ Energy Dashboard
+# ⚡ Štrom poraba (Energy Dashboard)
 
 Spletna aplikacija za dnevno beleženje porabe in proizvodnje električne energije.
-Podatke črpa iz **SolarEdge** in **MELCloud** API-jev, ali pa jih vnašate ročno.
+Podatke črpa iz **SolarEdge**, **MELCloud** in **MojElektro** API-jev, ali pa jih vnašate ročno.
 
-## 📊 Stolpci
+> **Nadgrajujete obstoječo namestitev?** Preberite najprej [CHANGES.md](CHANGES.md) – zagon je zdaj
+> zavrnjen, dokler ne nastavite pravih skrivnosti, vsi uporabniki se bodo morali enkrat znova prijaviti.
 
-| # | Stolpec | Vir | Formula |
-|---|---------|-----|---------|
-| 1 | Toplotna | Formula | `Topl. ogrevanje + Topl. san. voda` |
-| 2 | Topl. ogrevanje | MELCloud / ročno | – |
-| 3 | Topl. san. voda | MELCloud / ročno | – |
-| 4 | Avto | Ročno | – |
-| 5 | Gospodinjstvo | Formula | `Skupna poraba - Avto - Topl. ogr. - Topl. san.` |
-| 6 | Sončna elektr. | SolarEdge / ročno | – |
-| 7 | Skupna poraba | SolarEdge / ročno | – |
-| 8 | Višek/Manjko | Formula | `Sončna elektr. - Skupna poraba` |
+## 📊 Privzeti stolpci
 
-Stolpce, formule in uporabnike urejate v **admin panelu** (`/admin`).
+| Stolpec | Vir | Formula |
+|---|---|---|
+| Toplotna | Formula | `Topl. ogrevanje + Topl. san. voda` |
+| Topl. ogrevanje / san. voda | MELCloud / ročno | – |
+| Avto | Ročno | – |
+| Gospodinjstvo | Formula | `Skupna poraba - Avto - Topl. ogr. - Topl. san.` |
+| Sončna elektr. / Skupna poraba | SolarEdge / ročno | – |
+| Višek/Manjko | Formula | `Sončna elektr. - Skupna poraba` |
+
+Poleg tega so ustvarjeni (skriti) stolpci `me_blok1…5`, `me_uvoz`, `me_oddaja` za podatke MojElektro
+(prikaz vklopite v Admin → Stolpci). Formule se lahko sklicujejo tudi na druge formule; krožni sklici so zavrnjeni.
 
 ---
 
-## 🚀 Namestitev z Docker Compose
-
-### 1. Kloniraj repozitorij
+## 🚀 Namestitev (Docker Compose)
 
 ```bash
-git clone <url-repozitorija> energy-dashboard
-cd energy-dashboard
-```
-
-### 2. Ustvari .env datoteko
-
-```bash
+git clone <url-repozitorija> energy-dashboard && cd energy-dashboard
 cp .env.example .env
-nano .env   # prilagodi gesla in API ključe
 ```
 
-**Pomembno:** Spremeni vsaj `DB_PASSWORD` in `JWT_SECRET`!
+V `.env` **obvezno** nastavi (primer vrednosti: `openssl rand -hex 32`):
 
-Po želji lahko nastaviš tudi daljše trajanje prijave:
-- `SESSION_DAYS=180`
+| Spremenljivka | Pomen |
+|---|---|
+| `DB_PASSWORD` | geslo baze (priporočeno samo črke/številke, je del `DATABASE_URL`) |
+| `JWT_SECRET` | podpisni ključ sej, ≥ 32 znakov |
+| `CRON_SECRET` | skrivnost za cron klice, ≥ 16 znakov |
 
-> Opomba: na iPhone je shranjevanje sej v "Add to Home Screen" načinu najbolj zanesljivo, če aplikacija teče prek **HTTPS** domene, ne samo prek lokalnega HTTP naslova.
-
-### 3. Zaženi
+Brez veljavnih vrednosti (ali s primerom `CHANGE_ME`) se kontejner ne zažene in izpiše razlog.
 
 ```bash
-docker compose up -d --build
+docker compose up -d            # slike iz Docker Huba
+# ali iz izvorne kode:
+docker compose -f docker-compose.dev.yml up -d --build
+docker compose logs web         # tu je izpisano začetno geslo skrbnika
 ```
 
-To bo:
-- ✅ Pognalo PostgreSQL bazo
-- ✅ Počakalo, da je baza pripravljena
-- ✅ Ustvarilo tabele v bazi
-- ✅ Ustvarilo privzetega admin uporabnika
-- ✅ Nastavilo 8 stolpcev s formulami
-- ✅ Zagnalo aplikacijo na portu 3000
+**Prvi skrbnik:** ob prvem zagonu se ustvari uporabnik `admin` (ali `ADMIN_USERNAME`). Če `ADMIN_PASSWORD` ni nastavljen,
+se ustvari naključno geslo in se **enkrat** izpiše v logu (`docker compose logs web`). Ob prvi prijavi je zamenjava
+gesla obvezna. Geslo: najmanj 10 znakov.
 
-### 4. Odpri v brskalniku
+Odpri `http://tvoj-ip:3000`.
 
-```
-http://tvoj-ip:3000
-```
+### HTTPS in reverse proxy
 
-**Privzeta prijava:**
-- Uporabniško ime: `admin`
-- Geslo: `admin`
+Za dostop od zunaj postavi reverse proxy z HTTPS (nginx/Traefik/Caddy). Piškotek seje je `Secure`
+(`__Host-session`), če zahteva pride prek HTTPS (proxy mora nastaviti `X-Forwarded-Proto`);
+`COOKIE_SECURE=true|false` prisili vrednost. Proxy mora posredovati tudi `Host` (ali nastavi `ALLOWED_ORIGINS`).
 
-⚠️ **Geslo takoj spremeni** v Admin → Uporabniki!
-
----
-
-## 📱 Bližnjica na telefonu
-
-### Android (Chrome):
-1. Odpri stran v Chrome
-2. Tapni ⋮ (tri pike) → **"Dodaj na začetni zaslon"**
-3. Potrdi
-
-### iPhone (Safari):
-1. Odpri stran v Safari
-2. Tapni 📤 (Share) → **"Dodaj na začetni zaslon"**
-3. Potrdi
-
----
-
-## ⚙️ Admin panel
-
-Na `/admin` ali prek gumba ⚙️ na vrhu:
-
-- **Stolpci:** Dodaj/uredi/briši stolpce, nastavi formule
-- **Uporabniki:** Dodaj nove uporabnike, spremeni gesla
-- **API nastavitve:** Nastavi SolarEdge in MELCloud ključe v `.env`
-
-### Formule
-
-V formulah se sklicuješ na druge stolpce z `{kljuc_stolpca}`:
-
-```
-{toplotna_ogrevanje} + {toplotna_sanitarna}
-{skupna_poraba} - {avto} - {toplotna_ogrevanje} - {toplotna_sanitarna}
-{solarna} - {skupna_poraba}
-```
-
----
-
-## 🔌 API integracije
-
-### SolarEdge
-1. Pojdi na https://monitoring.solaredge.com
-2. Admin → Site Access → API Access
-3. Kopiraj API Key in Site ID
-4. Vstavi v `.env`:
-   ```
-   SOLAREDGE_API_KEY=tvoj_kljuc
-   SOLAREDGE_SITE_ID=tvoj_site_id
-   ```
-
-### MELCloud
-1. Uporabi iste podatke kot za MELCloud aplikacijo
-2. Vstavi v `.env`:
-   ```
-   MELCLOUD_EMAIL=tvoj@email.com
-   MELCLOUD_PASSWORD=tvoje_geslo
-   ```
-3. Če samodejno odkrivanje naprave ne uspe, dodaj še:
-   ```
-   MELCLOUD_DEVICE_ID=12345678
-   ```
-
-Po nastavitvi API ključev, na glavni strani pritisni **"API Sync"** za prenos podatkov.
-
----
-
-## 🔧 Upravljanje
-
-### Poglej loge
-```bash
-docker compose logs -f web
-```
-
-### Ponovno zgradi po spremembah kode
-```bash
-docker compose up -d --build
-```
-
-### Ustavi
-```bash
-docker compose down
-```
-
-### Ustavi in pobriši bazo (⚠️ vsi podatki se izgubijo!)
-```bash
-docker compose down -v
-```
-
-### Varnostna kopija baze
-```bash
-docker compose exec db pg_dump -U energy_user energydb > backup_$(date +%Y%m%d).sql
-```
-
-### Obnovi iz kopije
-```bash
-cat backup_20260715.sql | docker compose exec -T db psql -U energy_user energydb
-```
-
----
-
-## 🔒 Varnost
-
-- Spremeni privzeto admin geslo!
-- Nastavi močen `JWT_SECRET` v `.env`
-- Nastavi močno `DB_PASSWORD` v `.env`
-- Za dostop od zunaj uporabi reverse proxy (nginx/traefik) z HTTPS
-
-### Primer nginx reverse proxy:
 ```nginx
 server {
-    listen 80;
+    listen 443 ssl;
     server_name energy.tvoja-domena.si;
+    # ssl_certificate ... (certbot)
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -189,3 +73,69 @@ server {
     }
 }
 ```
+
+Baza je privzeto dostopna samo na `127.0.0.1`. **Ne izpostavljaj porta 5432 na internet.**
+Za zaščito pred ugibanjem gesel poleg vgrajene omejitve (10 napačnih poskusov na uporabnika / 30 na IP) razmisli o `fail2ban` na proxyju.
+
+---
+
+## 🔐 Vloge in varnost
+
+- **Uporabnik:** vpogled v podatke, ročni vnos, uvoz/izvoz CSV, sinhronizacija, grafi, kalkulator, lastna zamenjava gesla.
+- **Skrbnik:** dodatno stolpci/formule, uporabniki, tarife, e-pošta/SMTP, dnevnik sprememb, MojElektro diagnostika.
+- Seje so podpisane (HS256) in vezane na `token_version` v bazi: zamenjava gesla odjavi vse naprave.
+- SMTP geslo je v bazi **šifrirano** (AES-256-GCM; ključ iz `SETTINGS_KEY` ali `JWT_SECRET`) in se nikoli ne pošlje v brskalnik.
+- SMTP strežnik je zaščiten pred SSRF (blokirani loopback/link-local, dovoljena standardna vrata). Strežnik v LAN na
+  nestandardnih vratih omogoči `SMTP_ALLOW_INTERNAL=true`. TLS potrdilo se privzeto preverja; samopodpisano dovoliš v nastavitvah e-pošte.
+- Ročno vnesene vrednosti (`isManual`) **sinhronizacija ne prepiše**.
+- Vse spremembe (vnosi, uporabniki, nastavitve, stolpci, prijave, neuspele prijave) so v dnevniku; zapisi starejši od ~400 dni se brišejo.
+
+## ⏰ Samodejna sinhronizacija (cron kontejner)
+
+Vsak dan ob 4:00 (`SYNC_SCHEDULE`, časovni pas `TZ`): sinhronizacija tekočega meseca (SolarEdge, MELCloud, MojElektro),
+**1. in 2. v mesecu tudi prejšnjega meseca** (da dobi zadnji dan končne vrednosti), preverjanje opozorila za včerajšnji dan
+in 1. v mesecu mesečno poročilo. Izpis: `docker compose logs cron`. Ob napaki skripta vrne kodo ≠ 0.
+
+## 💾 Varnostne kopije
+
+```bash
+./backup.sh                 # ./backups/energydb_backup_*.sql.gz (ohrani zadnjih 30; KEEP=60 ./backup.sh)
+./backup.sh /mnt/nas/elektrika
+./restore.sh backups/energydb_backup_20261008_031500.sql.gz
+```
+
+Skripta se ustavi ob vsaki napaki (tudi pg_dump), preveri veljavnost datoteke in ne pusti pol-zapisanih kopij.
+Samodejno: `15 3 * * * cd /pot/do/projekta && ./backup.sh /mnt/nas/elektrika >> backup.log 2>&1`.
+Kopije hrani tudi zunaj tega strežnika.
+
+## 🗄️ Baza in migracije
+
+SQL migracije so v `db/migrations/` in se ob zagonu uporabijo samodejno (zabeležene v `schema_migrations`, z zaklepom).
+Nova sprememba sheme = nova datoteka `0003_….sql` (idempotentna) + posodobitev `src/db/schema.ts`.
+PostgreSQL 15 je še podprt; nadgradnja na novejši major zahteva `pg_dump` → nova baza → `restore` (podatkovne mape se ne dajo kar zamenjati).
+
+## 🧪 Razvoj
+
+```bash
+npm install          # ustvari package-lock.json – commitaj ga (Docker in CI uporabljata npm ci)
+npm run typecheck && npm run lint && npm test
+npm run dev          # potrebuje DATABASE_URL, JWT_SECRET, CRON_SECRET; nato: npm run db:init
+```
+
+Testi (`tests/`) pokrivajo formule, validacijo, omejevalnik, tarife, SSRF in preverjanje skrivnosti.
+
+## 🔌 API integracije
+
+- **SolarEdge** – `SOLAREDGE_API_KEY`, `SOLAREDGE_SITE_ID`. API ima omejitev ~300 klicev/dan; ročni sync ima 30 s premor, živi podatki so 30 s v predpomnilniku.
+- **MELCloud** – `MELCLOUD_EMAIL`, `MELCLOUD_PASSWORD` (po potrebi `MELCLOUD_DEVICE_ID`). Neuradni API.
+- **MojElektro** – `MOJELEKTRO_API_KEY`, `MOJELEKTRO_EIMM`, (`MOJELEKTRO_GSRN_MT`). Bloki se izračunajo iz **15-minutnih odčitkov A+/A-** po uradnem urniku blokov (`src/lib/blocks.ts`); `MOJELEKTRO_TS_MODE` (`end`/`start`) določa, ali je časovni žig konec ali začetek intervala.
+  ⚠️ Preveri na svojih podatkih, ali je `endTime` v API-ju vključen (zadnji dan v mesecu) in ali so odčitki dnevni ali 15-minutni.
+
+## 🧾 Tarife v kalkulatorju
+
+Privzete cene (`src/lib/tariff.ts`) so **primer** iz računa dobavitelja za 2024+ in so lahko zastarele.
+Skrbnik jih nastavi v Kalkulator → Tarife; dogovorjene moči se ob sinhronizaciji MojElektro posodobijo samodejno.
+
+## Licenca
+
+Glej [LICENSE](LICENSE).

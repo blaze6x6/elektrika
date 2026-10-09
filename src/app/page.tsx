@@ -1,15 +1,14 @@
 import DashboardClient from "./DashboardClient";
-import { getSession, clearSession } from "@/lib/auth";
+import { clearSession } from "@/lib/auth";
+import { requirePageUser } from "@/lib/guard";
+import { logAction } from "@/lib/audit";
 import { redirect } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, KeyRound } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
 export default async function Home() {
-  const session = await getSession();
-
-  if (!session) {
-    redirect("/login");
-  }
+  const user = await requirePageUser();
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -25,19 +24,26 @@ export default async function Home() {
           />
           <h1 className="text-xl font-bold text-white">Štrom poraba</h1>
         </div>
-        <form action={async () => {
-          "use server";
-          await clearSession();
-          redirect("/login");
-        }}>
-          <button type="submit" className="text-gray-300 hover:text-white flex items-center gap-2">
-            <LogOut size={20} />
-            <span className="hidden sm:inline">Odjava</span>
-          </button>
-        </form>
+        <div className="flex items-center gap-4">
+          <Link href="/change-password" className="text-gray-300 hover:text-white flex items-center gap-2" title="Zamenjaj geslo">
+            <KeyRound size={20} />
+            <span className="hidden sm:inline">{user.username}</span>
+          </Link>
+          <form action={async () => {
+            "use server";
+            await clearSession();
+            await logAction(user.username, "logout");
+            redirect("/login");
+          }}>
+            <button type="submit" className="text-gray-300 hover:text-white flex items-center gap-2">
+              <LogOut size={20} />
+              <span className="hidden sm:inline">Odjava</span>
+            </button>
+          </form>
+        </div>
       </header>
       <main className="flex-1 min-h-0 p-2 sm:p-4 overflow-hidden">
-        <DashboardClient />
+        <DashboardClient isAdmin={user.isAdmin} />
       </main>
     </div>
   );

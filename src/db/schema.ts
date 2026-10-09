@@ -18,7 +18,7 @@ export const columnConfigs = pgTable("column_configs", {
   label: varchar("label", { length: 255 }).notNull(),
   displayOrder: integer("display_order").notNull().default(0),
   sourceType: varchar("source_type", { length: 50 }).notNull().default("manual"),
-  // "manual" | "solaredge" | "melcloud" | "formula"
+  // "manual" | "solaredge" | "melcloud" | "mojelektro" | "formula"
   formula: text("formula"), // e.g. "{toplotna_ogrevanje} + {toplotna_sanitarna}"
   unit: varchar("unit", { length: 50 }).default("kWh"),
   editable: boolean("editable").default(true),
@@ -47,6 +47,9 @@ export const users = pgTable("users", {
   username: varchar("username", { length: 255 }).notNull().unique(),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   isAdmin: boolean("is_admin").default(false),
+  // Povišanje razveljavi vse obstoječe seje uporabnika
+  tokenVersion: integer("token_version").notNull().default(0),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

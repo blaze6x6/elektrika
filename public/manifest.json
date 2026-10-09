@@ -1,6 +1,6 @@
 {
-  "name": "Energy Dashboard",
-  "short_name": "Energy",
+  "name": "Štrom poraba",
+  "short_name": "Štrom",
   "description": "Beleženje porabe energije",
   "start_url": "/",
   "display": "standalone",
@@ -12,7 +12,14 @@
       "src": "/icon",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
-  ]
+  ],
+  "lang": "sl"
 }

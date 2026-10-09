@@ -2,23 +2,21 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/ThemeContext";
+import { themeInitScript } from "@/lib/themes";
 
 export const metadata: Metadata = {
-  title: "Energy Dashboard",
+  title: "Štrom poraba",
   description: "Beleženje porabe in proizvodnje energije",
   manifest: "/manifest.json",
   icons: {
-    icon: [
-      { url: "/icon", type: "image/png", sizes: "512x512" },
-      { url: "/favicon.png", type: "image/png", sizes: "32x32" },
-    ],
+    icon: [{ url: "/icon", type: "image/png", sizes: "512x512" }],
     apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
     shortcut: ["/icon"],
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Štrom"
+    title: "Štrom",
   },
 };
 
@@ -26,12 +24,9 @@ export const viewport = { themeColor: "#111827" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="sl">
+    <html lang="sl" data-theme="dark" data-mode="dark" suppressHydrationWarning>
       <head>
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <link rel="apple-touch-icon" href="/apple-icon" />
-        <link rel="icon" type="image/png" href="/icon" />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript() }} />
       </head>
       <body className="bg-gray-900 text-gray-100 antialiased">
         <ThemeProvider>{children}</ThemeProvider>

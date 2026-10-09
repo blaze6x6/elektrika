@@ -1,5 +1,6 @@
 "use client";
 
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import { useState } from "react";
 import { useActionState } from "react";
 import { login } from "./actions";
@@ -8,15 +9,15 @@ import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
-  const [state, formAction, isPending] = useActionState(
-    async (prevState: any, formData: FormData) => {
-      return await login(formData);
-    },
+  const [state, formAction, isPending] = useActionState<{ error?: string } | null, FormData>(
+    async (_prev, formData) => (await login(formData)) ?? null,
     null
   );
 
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900 px-4">
+      <div className="fixed right-3 top-3 z-50"><ThemeSwitcher /></div>
       <div className="max-w-md w-full bg-gray-800 rounded-xl shadow-lg p-8">
         <div className="mb-6 flex flex-col items-center gap-3">
           <Image

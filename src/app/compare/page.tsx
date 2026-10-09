@@ -1,9 +1,7 @@
-import { getSession } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requirePageUser } from "@/lib/guard";
 import CompareClient from "./CompareClient";
 
 export default async function ComparePage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  await requirePageUser();
   return <CompareClient />;
 }

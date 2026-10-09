@@ -8,16 +8,16 @@ import {
 import { sl } from "date-fns/locale";
 import {
   ChevronLeft, ChevronRight, RefreshCw, Settings,
-  Download, BarChart3, ArrowLeftRight, Upload, Sun, Moon, Cloud, Calculator,
+  Download, BarChart3, ArrowLeftRight, Upload, Cloud, Calculator,
 } from "lucide-react";
-import { evaluateFormula } from "@/lib/formula";
-import { useTheme } from "@/lib/ThemeContext";
+import { buildFormulaMap, evaluateFormula } from "@/lib/formula";
+import ThemeSwitcher from "@/lib/ThemeSwitcher";
 import Link from "next/link";
 
 type ColumnConfig = { id: number; key: string; label: string; displayOrder: number; sourceType: string; formula: string | null; unit: string | null; editable: boolean; visible: boolean };
 type DailyRow = { date: string; columnKey: string; value: number };
 
-export default function DashboardClient() {
+export default function DashboardClient({ isAdmin = false }: { isAdmin?: boolean }) {
   const now = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
@@ -32,27 +32,37 @@ export default function DashboardClient() {
   const [exportFrom, setExportFrom] = useState(format(startOfMonth(currentMonth), "yyyy-MM-dd"));
   const [exportTo, setExportTo] = useState(format(endOfMonth(currentMonth), "yyyy-MM-dd"));
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [liveData, setLiveData] = useState<{ pv: number; load: number; grid: number; gridExporting: boolean } | null>(null);
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
   const touchStart = useRef<number>(0);
-  const { theme, toggle: toggleTheme } = useTheme();
 
   const monthKey = format(currentMonth, "yyyy-MM");
   const yearKey = format(currentMonth, "yyyy");
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [colRes, dataRes, yearRes] = await Promise.all([
-      fetch("/api/columns"),
-      fetch(`/api/data?month=${monthKey}`),
-      fetch(`/api/data?year=${yearKey}`),
-    ]);
-    setColumns((await colRes.json()).columns || []);
-    setMonthData((await dataRes.json()).data || []);
-    setYearData((await yearRes.json()).data || []);
-    
-    // Fetch live data silently
-    setLoading(false);
+    try {
+      const [colRes, dataRes, yearRes] = await Promise.all([
+        fetch("/api/columns"),
+        fetch(`/api/data?month=${monthKey}`),
+        fetch(`/api/data?year=${yearKey}`),
+      ]);
+      if (colRes.status === 401 || dataRes.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      if (!colRes.ok || !dataRes.ok || !yearRes.ok) throw new Error("Nalaganje podatkov ni uspelo");
+      setColumns((await colRes.json()).columns || []);
+      setMonthData((await dataRes.json()).data || []);
+      setYearData((await yearRes.json()).data || []);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Napaka pri nalaganju");
+    } finally {
+      setLoading(false);
+    }
   }, [monthKey, yearKey]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -73,9 +83,11 @@ export default function DashboardClient() {
   const monthLookup = buildLookup(monthData);
   const yearLookup = buildLookup(yearData);
 
+  const formulaMap = buildFormulaMap(columns);
+
   const getCellValue = (dateStr: string, col: ColumnConfig, lookup: Record<string, Record<string, number>>): number => {
     const dayVals = lookup[dateStr] || {};
-    if (col.sourceType === "formula" && col.formula) return evaluateFormula(col.formula, dayVals);
+    if (col.sourceType === "formula" && col.formula) return evaluateFormula(col.formula, dayVals, formulaMap);
     return dayVals[col.key] ?? 0;
   };
 
@@ -166,23 +178,44 @@ export default function DashboardClient() {
     setYearData(prev => [...prev.filter(r => !(r.date === dateStr && r.columnKey === columnKey)), { date: dateStr, columnKey, value: finalValue }]);
     const tk = `${dateStr}-${columnKey}`;
     if (debounceTimers.current[tk]) clearTimeout(debounceTimers.current[tk]);
-    debounceTimers.current[tk] = setTimeout(() => {
-      fetch("/api/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: dateStr, columnKey, value: finalValue }) });
+    debounceTimers.current[tk] = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: dateStr, columnKey, value: finalValue }) });
+        if (res.status === 401) { window.location.href = "/login"; return; }
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          setSaveError(`Vnos ${dateStr} (${columnKey}) ni bil shranjen: ${j.error || res.status}`);
+          await fetchAll(); // vrni prikaz v skladu z bazo
+        } else {
+          setSaveError(null);
+        }
+      } catch {
+        setSaveError(`Vnos ${dateStr} (${columnKey}) ni bil shranjen (ni povezave).`);
+      }
     }, 500);
   };
 
   const handleSync = async () => {
     setSyncing(true); setSyncResults(null);
-    const res = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month: monthKey }) });
-    const json = await res.json();
-    setSyncResults(json.results || []);
-    setLastSync(new Date().toLocaleTimeString("sl-SI"));
-    if (json.success) await fetchAll();
-    // Fetch weather in parallel
-    await Promise.allSettled([
-      fetch("/api/sync/mojelektro", { method: "POST", headers: { "Content-Type": "application/json", "x-cron-secret": "" }, body: JSON.stringify({ month: monthKey }) }),
-    ]);
-    setSyncing(false);
+    const post = async (url: string): Promise<string[]> => {
+      try {
+        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month: monthKey }) });
+        const json = await res.json().catch(() => ({}));
+        if (json.results) return json.results as string[];
+        return [`❌ ${json.error || `HTTP ${res.status}`}`];
+      } catch {
+        return ["❌ Ni povezave s strežnikom"];
+      }
+    };
+    try {
+      const main = await post("/api/sync");
+      const me = await post("/api/sync/mojelektro");
+      setSyncResults([...main, ...me.filter(r => !r.startsWith("ℹ️ MojElektro: ni nastavljen"))]);
+      setLastSync(new Date().toLocaleTimeString("sl-SI"));
+      await fetchAll();
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleExport = () => { window.location.href = `/api/export?from=${exportFrom}&to=${exportTo}`; setShowExportModal(false); };
@@ -194,14 +227,20 @@ export default function DashboardClient() {
     setImportResult("⏳ Uvažam...");
     const fd = new FormData();
     fd.append("file", file);
-    const res = await fetch("/api/import", { method: "POST", body: fd });
-    const json = await res.json();
-    if (json.success) {
-      setImportResult(`✅ Uvoženo: ${json.imported} vrednosti, ${json.skipped} preskočenih`);
-      await fetchAll();
-    } else {
-      setImportResult(`❌ ${json.error}`);
+    try {
+      const res = await fetch("/api/import", { method: "POST", body: fd });
+      const json = await res.json().catch(() => ({}));
+      if (json.success) {
+        const unk = json.unknownColumns?.length ? ` · neprepoznani stolpci: ${json.unknownColumns.join(", ")}` : "";
+        setImportResult(`✅ Uvoženo: ${json.imported} vrednosti, ${json.skipped} preskočenih${unk}`);
+        await fetchAll();
+      } else {
+        setImportResult(`❌ ${json.error || `HTTP ${res.status}`}`);
+      }
+    } catch {
+      setImportResult("❌ Uvoz ni uspel (ni povezave)");
     }
+    e.target.value = ""; // omogoči ponovni izbor iste datoteke
   };
 
   // Swipe – samo na navigacijski vrstici spodaj
@@ -254,14 +293,21 @@ export default function DashboardClient() {
           </Link>
         </div>
         <div className="flex gap-1">
-          <button onClick={toggleTheme} className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded" title="Tema">
-            {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-          </button>
-          <Link href="/admin" className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 px-2 py-1.5 rounded text-white text-[11px]">
-            <Settings size={12} /> Admin
-          </Link>
+          <ThemeSwitcher />
+          {isAdmin && (
+            <Link href="/admin" className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 px-2 py-1.5 rounded text-white text-[11px]">
+              <Settings size={12} /> Admin
+            </Link>
+          )}
         </div>
       </div>
+
+      {(saveError || loadError) && (
+        <div className="mx-2 mb-1 p-2 bg-red-900/60 border border-red-700 rounded text-xs text-red-200 flex justify-between gap-2">
+          <span>{saveError || loadError}</span>
+          <button onClick={() => { setSaveError(null); setLoadError(null); }} className="text-red-300">✕</button>
+        </div>
+      )}
 
       {/* Last sync */}
       {lastSync && <div className="mx-2 mb-1 text-[10px] text-gray-500 flex items-center gap-1"><Cloud size={10} /> Zadnji sync: {lastSync}</div>}

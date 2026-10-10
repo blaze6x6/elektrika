@@ -1,6 +1,7 @@
 "use client";
 
 import ThemeSwitcher from "@/lib/ThemeSwitcher";
+import InstallButton from "@/lib/pwa";
 import { useState } from "react";
 import { useActionState } from "react";
 import { login } from "./actions";
@@ -17,7 +18,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900 px-4">
-      <div className="fixed right-3 top-3 z-50"><ThemeSwitcher /></div>
+      <div className="fixed right-3 top-3 z-50 flex gap-1"><InstallButton /><ThemeSwitcher /></div>
       <div className="max-w-md w-full bg-gray-800 rounded-xl shadow-lg p-8">
         <div className="mb-6 flex flex-col items-center gap-3">
           <Image

@@ -108,3 +108,12 @@ Odprte točke: preveri obnašanje MojElektro (`endTime`, granularnost odčitkov)
 - Zdaj se berejo 15-minutni A+ (`32.0.2.4.1.2.12.0.0.0.0.0.0.0.0.3.72.0`) in A- (`32.0.2.4.19.2.12.0.0.0.0.0.0.0.0.3.72.0`); uvoz se razporedi v bloke 1–5 po uradnem urniku (`aggregateMeIntervals`), oddaja se sešteje.
 - Časovni žig odčitka obravnavamo kot konec intervala (`MOJELEKTRO_TS_MODE=end`); kontrola v kalkulatorju (SolarEdge Purchased po blokih) pokaže, če je prav `start`.
 - Pri več veljavnih vnosih dogovorjene moči za isto obdobje velja najnovejši po datumu vnosa.
+
+## PWA (namestitev kot aplikacija)
+
+- `public/manifest.json`: id, scope, `display: standalone`, ikone 192/512 (any) + 512 maskable, bližnjice (Grafi, Primerjava let, Kalkulator). PNG ikone so v `public/icons/` (ustvarjene iz `icon.svg`), `public/favicon.ico`.
+- `public/sw.js`: service worker (samo omrežje za strani in API, predpomni le statične datoteke; ob izpadu povezave prikaže `public/offline.html`). Podatkov in prijavljenih strani **ne** predpomni.
+- `src/lib/pwa.tsx`: registracija SW (samo v produkciji) in gumb »Namesti aplikacijo« (ikona telefona) na nadzorni plošči in prijavi: Android/Chrome sproži namestitev neposredno, iPhone (Safari ali Chrome) dobi navodila »Deli → Dodaj na začetni zaslon«.
+- Proxy in `next.config.ts`: `/sw.js` in `/offline.html` sta javna, `sw.js` se ne predpomni.
+- iOS: `apple-touch-icon` (180 px), status vrstica »black«; odstranjena dinamična `icon.tsx`/`apple-icon.tsx`.
+- Pogoj za namestitev: stran mora teči prek **HTTPS** (ali localhost). Preverjeno v Chromiumu: namestljivost brez napak, offline stran, sprožitev namestitve; ne na pravi napravi.

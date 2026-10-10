@@ -36,6 +36,14 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   async headers() {
     return [
+      // Service worker se mora vedno osvežiti (nove različice), obseg celotna stran
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
       // PDF/tiskalno poročilo ima lasten CSP (nonce) – izvzeto iz globalnega
       { source: "/((?!api/report/pdf).*)", headers: securityHeaders },
     ];

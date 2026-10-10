@@ -1,25 +1,27 @@
 {
+  "id": "/",
   "name": "Štrom poraba",
   "short_name": "Štrom",
-  "description": "Beleženje porabe energije",
-  "start_url": "/",
+  "description": "Beleženje porabe in proizvodnje energije",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#111827",
   "theme_color": "#111827",
-  "orientation": "portrait-primary",
+  "lang": "sl",
+  "dir": "ltr",
+  "categories": ["utilities", "productivity"],
   "icons": [
-    {
-      "src": "/icon",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
-  "lang": "sl"
+  "shortcuts": [
+    { "name": "Grafi", "url": "/charts", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Primerjava let", "url": "/compare", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Kalkulator", "url": "/calculator", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ]
 }

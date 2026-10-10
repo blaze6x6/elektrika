@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { buildFormulaMap, evaluateFormula } from "@/lib/formula";
 import ThemeSwitcher from "@/lib/ThemeSwitcher";
+import InstallButton from "@/lib/pwa";
 import Link from "next/link";
 
 type ColumnConfig = { id: number; key: string; label: string; displayOrder: number; sourceType: string; formula: string | null; unit: string | null; editable: boolean; visible: boolean };
@@ -293,6 +294,7 @@ export default function DashboardClient({ isAdmin = false }: { isAdmin?: boolean
           </Link>
         </div>
         <div className="flex gap-1">
+          <InstallButton />
           <ThemeSwitcher />
           {isAdmin && (
             <Link href="/admin" className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 px-2 py-1.5 rounded text-white text-[11px]">

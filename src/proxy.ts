@@ -7,7 +7,7 @@ import { cronAuthorized } from "@/lib/secrets";
 // Route handlerji skrivnost preverijo še enkrat (defense in depth).
 const CRON_PATHS = new Set(["/api/sync", "/api/sync/mojelektro", "/api/email/send"]);
 
-const PUBLIC_EXACT = new Set(["/favicon.ico", "/manifest.json", "/api/health", "/login", "/icon", "/apple-icon"]);
+const PUBLIC_EXACT = new Set(["/favicon.ico", "/manifest.json", "/sw.js", "/offline.html", "/api/health", "/login"]);
 
 function isPublic(pathname: string) {
   return pathname.startsWith("/_next") || pathname.startsWith("/icons/") || PUBLIC_EXACT.has(pathname);
@@ -83,5 +83,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.json|icons/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|offline.html|icons/).*)"],
 };

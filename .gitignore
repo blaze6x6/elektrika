@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+build
+next-env.d.ts
+*.tsbuildinfo
+
+# skrivnosti in lokalni podatki
+.env
+.env.*
+!.env.example
+backups/
+*.log
+pgdata/
+
+.DS_Store

@@ -1,0 +1,26 @@
+# Dodatek za HTTPS z avtomatskim certifikatom (Caddy + Let's Encrypt).
+# Potrebuješ domeno, ki kaže na ta strežnik, in odprta vrata 80 in 443.
+#
+#   1. Kopiraj Caddyfile.example v Caddyfile in vpiši svojo domeno.
+#   2. Zaženi:  docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+#   3. Odpri https://tvoja-domena in namesti aplikacijo.
+#
+# Vrata aplikacije (3000) lahko nato zapreš navzven (v docker-compose.yml izbriši "ports" pri servisu web).
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: poraba-elektrika-https
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  caddy_data:
+  caddy_config:

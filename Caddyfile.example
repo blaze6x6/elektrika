@@ -1,0 +1,6 @@
+# Zamenjaj z domeno, ki kaže na ta strežnik. Caddy sam pridobi in obnavlja certifikat.
+elektrika.example.com {
+	encode gzip
+	# Caddy privzeto nastavi X-Forwarded-Proto in Host, kar aplikacija potrebuje (Secure piškotek, preverjanje izvora).
+	reverse_proxy web:3000
+}

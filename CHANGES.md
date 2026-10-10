@@ -117,3 +117,9 @@ Odprte točke: preveri obnašanje MojElektro (`endTime`, granularnost odčitkov)
 - Proxy in `next.config.ts`: `/sw.js` in `/offline.html` sta javna, `sw.js` se ne predpomni.
 - iOS: `apple-touch-icon` (180 px), status vrstica »black«; odstranjena dinamična `icon.tsx`/`apple-icon.tsx`.
 - Pogoj za namestitev: stran mora teči prek **HTTPS** (ali localhost). Preverjeno v Chromiumu: namestljivost brez napak, offline stran, sprožitev namestitve; ne na pravi napravi.
+- Gumb »Namesti aplikacijo« pokaže diagnostiko (https, service worker, manifest). Dodana `docker-compose.https.yml` + `Caddyfile.example` za HTTPS z avtomatskim certifikatom; README razloži, da PWA brez https ne deluje.
+
+## Kalkulator: kartice za hipotetično porabo »brez sončne«
+- Nova kartica »🌙 Hipotetična poraba brez sončne«: povzetek (uvoz + samooskrba = brez sončne) in 5 ploščic po blokih
+  (kWh, delež, vrstica »uvoz + samooskrba«), aktivni bloki sezone poudarjeni; vir samooskrbe (izmerjeni/ocenjeni dnevi).
+- Kartice blokov kažejo še strošek energije v bloku z DDV (energija + omrežnina bloka + prispevki + trošarina) in ceno €/kWh; spodaj skupni znesek brez sončne vključno s fiksnimi stroški (moč, SPTE, nadomestilo).

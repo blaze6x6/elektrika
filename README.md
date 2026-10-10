@@ -54,6 +54,11 @@ Odpri `http://tvoj-ip:3000`.
 
 ### HTTPS in reverse proxy
 
+> **Namestitev kot aplikacija (PWA) deluje samo prek `https://`** (Chrome na Androidu in iPhone). Prek `http://` in naslova IP
+> Chrome ponudi le bližnjico. Najlažje: `docker-compose.https.yml` + `Caddyfile.example` (Caddy z avtomatskim certifikatom,
+> potrebuješ domeno). Brez javne domene lahko uporabiš Tailscale (`tailscale serve`/MagicDNS HTTPS) ali Cloudflare Tunnel.
+> Gumb »Namesti aplikacijo« v aplikaciji pokaže, ali je povezava varna.
+
 Za dostop od zunaj postavi reverse proxy z HTTPS (nginx/Traefik/Caddy). Piškotek seje je `Secure`
 (`__Host-session`), če zahteva pride prek HTTPS (proxy mora nastaviti `X-Forwarded-Proto`);
 `COOKIE_SECURE=true|false` prisili vrednost. Proxy mora posredovati tudi `Host` (ali nastavi `ALLOWED_ORIGINS`).

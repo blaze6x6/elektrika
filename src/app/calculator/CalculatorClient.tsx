@@ -417,8 +417,75 @@ export default function CalculatorClient() {
               </div>
               <div className="text-xs text-gray-500 text-center">
                 {isHighSeason ? "🔴 Višja sezona: bloki 1–4 aktivni" : "🟡 Nižja sezona: bloki 2–5 aktivni"}
-                {samooskrbaKwh > 0 && <div className="mt-1 text-[10px]">Samooskrba po blokih: {daysMeasured} dni iz meritev SolarEdge (po urah){daysEstimated > 0 && <>, {daysEstimated} dni ocena po profilu sonca</>}.</div>}
-                {samooskrbaKwh > 0 && <div className="mt-1 text-[10px]">Hipotetično (brez sonca): {hipoBloki.map((v, i) => `B${i + 1} ${fmtKwh(v)}`).join(" · ")} kWh</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Hipotetična poraba brez sončne */}
+          {hasMojelektro && (
+            <div className="bg-gray-800 rounded-xl p-4">
+              <h3 className="text-sm font-bold mb-1 flex items-center gap-2">
+                🌙 Hipotetična poraba brez sončne
+                <span className="text-[10px] font-normal text-gray-400">(informativno)</span>
+              </h3>
+              <p className="text-[11px] text-gray-500 mb-3">Dejanski uvoz iz omrežja + samooskrba iz sončne = poraba, kot da elektrarne ne bi bilo.</p>
+
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="rounded-lg p-2 text-center border border-gray-700">
+                  <div className="text-[10px] text-gray-400">Uvoz (MojElektro)</div>
+                  <div className="text-sm font-bold text-blue-300">{fmtKwh(blockSum)}</div>
+                  <div className="text-[9px] text-gray-500">kWh</div>
+                </div>
+                <div className="rounded-lg p-2 text-center border border-green-700 bg-green-900/20">
+                  <div className="text-[10px] text-gray-400">+ Samooskrba</div>
+                  <div className="text-sm font-bold text-green-400">{fmtKwh(samooskrbaPoBlokih.reduce((a, b) => a + b, 0))}</div>
+                  <div className="text-[9px] text-gray-500">kWh</div>
+                </div>
+                <div className="rounded-lg p-2 text-center border border-red-700 bg-red-900/20">
+                  <div className="text-[10px] text-gray-400">= Brez sončne</div>
+                  <div className="text-sm font-bold text-red-300">{fmtKwh(hipoSkupnaPoraba)}</div>
+                  <div className="text-[9px] text-gray-500">kWh</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-1 mb-3">
+                {hipoBloki.map((v, i) => {
+                  const b = i + 1;
+                  const isActive = aktivniBloki.includes(b);
+                  const share = hipoSkupnaPoraba > 0 ? (v / hipoSkupnaPoraba) * 100 : 0;
+                  const selfB = samooskrbaPoBlokih[i];
+                  // Strošek energije v bloku z DDV: energija + omrežnina bloka + prispevki + trošarina (brez fiksnih stroškov)
+                  const cenaKwh = t.cena_energija_et + (hasMojelektro ? t[`cena_omreznina_blok${b}`] : t.cena_omreznina_et)
+                    + t.prisp_operater_trg + t.prisp_energ_ucinkovitost + t.trosarina;
+                  const strosekB = v * cenaKwh * (1 + t.ddv_stopnja);
+                  return (
+                    <div key={b} className={`rounded-lg p-2 text-center border ${isActive ? "border-red-700 bg-red-900/10" : "border-gray-700 opacity-50"}`}>
+                      <div className="text-[8px] text-gray-400">Blok {b}</div>
+                      <div className="text-xs font-bold text-red-300">{fmtKwh(v)}</div>
+                      <div className="text-[8px] text-gray-500">kWh · {share.toFixed(0)} %</div>
+                      <div className="h-1 rounded bg-gray-700 mt-1 overflow-hidden">
+                        <div className="h-full bg-red-400" style={{ width: `${Math.min(100, share)}%` }} />
+                      </div>
+                      <div className="text-[8px] text-gray-400 mt-1">{fmtKwh(meBloki[i])} + <span className="text-green-400">{fmtKwh(selfB)}</span></div>
+                      <div className="text-[10px] font-bold text-yellow-300 mt-1">{fmt(strosekB)} €</div>
+                      <div className="text-[8px] text-gray-500">{(cenaKwh * (1 + t.ddv_stopnja)).toFixed(4).replace(".", ",")} €/kWh</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-between items-center rounded-lg border border-gray-700 px-3 py-2 mb-2 text-xs">
+                <span className="text-gray-400">Skupaj brez sončne (z DDV, vključno s fiksnimi stroški)</span>
+                <span className="font-bold text-red-300">{fmt(brezSE_skupaj)} €</span>
+              </div>
+
+              <div className="text-[10px] text-gray-500 text-center space-y-0.5">
+                <div>
+                  Samooskrba: {daysMeasured} dni iz meritev SolarEdge (po urah)
+                  {daysEstimated > 0 && <>, {daysEstimated} dni ocena po profilu sonca</>}
+                  {daysMeasured + daysEstimated === 0 && <> – ni podatkov</>}.
+                </div>
+                <div>Vključenih dni z meritvami MojElektro: {daysWithMe}</div>
               </div>
             </div>
           )}

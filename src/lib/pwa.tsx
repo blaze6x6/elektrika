@@ -89,6 +89,29 @@ export default function InstallButton({ className = "" }: { className?: string }
   const { canPrompt, standalone, platform, isIosChrome, install } = usePwa();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const [diag, setDiag] = useState<{ secure: boolean; sw: string; manifest: string } | null>(null);
+
+  // Ko uporabnik odpre navodila, preverimo, zakaj namestitev morda ni na voljo.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const secure = window.isSecureContext;
+      let sw = "ni podprt";
+      if ("serviceWorker" in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration().catch(() => undefined);
+        sw = reg?.active ? "aktiven" : reg ? "se namešča" : secure ? "ni registriran (osveži stran)" : "ni mogoč (stran ni https)";
+      }
+      let manifest = "ni dosegljiv";
+      try {
+        const r = await fetch("/manifest.json", { cache: "no-store" });
+        if (r.ok) { const j = await r.json(); manifest = Array.isArray(j.icons) && j.icons.length ? "v redu" : "brez ikon"; }
+        else manifest = `HTTP ${r.status}`;
+      } catch { /* ostane "ni dosegljiv" */ }
+      if (!cancelled) setDiag({ secure, sw, manifest });
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -139,7 +162,20 @@ export default function InstallButton({ className = "" }: { className?: string }
           ) : (
             <p className="text-gray-300">V naslovni vrstici brskalnika (Chrome/Edge) klikni ikono za namestitev ali meni ⋮ → »Namesti aplikacijo«.</p>
           )}
-          <p className="mt-2 text-[10px] text-gray-500">Namestitev zahteva varno povezavo (https). Če možnosti ni, osveži stran in poskusi znova.</p>
+          {diag && (
+            <div className="mt-2 space-y-0.5 border-t border-gray-700 pt-2 text-[11px]">
+              <div className={diag.secure ? "text-green-400" : "text-red-400"}>
+                {diag.secure ? "✓ Varna povezava (https)" : "✕ Stran ni na https – Chrome zato ne ponudi namestitve"}
+              </div>
+              <div className="text-gray-400">Service worker: {diag.sw}</div>
+              <div className="text-gray-400">Manifest: {diag.manifest}</div>
+              {!diag.secure && (
+                <p className="pt-1 text-yellow-400">
+                  Odpri aplikacijo prek https:// naslova (reverse proxy s certifikatom). Prek http:// in naslova IP Chrome ponudi samo bližnjico, ne prave namestitve.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

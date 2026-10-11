@@ -17,7 +17,7 @@ export default function LoginPage() {
 
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-900 px-4">
       <div className="fixed right-3 top-3 z-50 flex gap-1"><InstallButton /><ThemeSwitcher /></div>
       <div className="max-w-md w-full bg-gray-800 rounded-xl shadow-lg p-8">
         <div className="mb-6 flex flex-col items-center gap-3">
@@ -78,6 +78,7 @@ export default function LoginPage() {
           </button>
         </form>
       </div>
+      <p className="text-xs text-gray-500">Created by Matjaž Tekavec</p>
     </div>
   );
 }

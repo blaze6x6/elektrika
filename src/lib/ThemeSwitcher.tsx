@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Monitor, Palette } from "lucide-react";
 import { useTheme } from "./ThemeContext";
 import { THEMES, ThemeInfo } from "./themes";
+import { usePopoverStyle } from "./popoverPos";
 
 function Group({ title, items }: { title: string; items: ThemeInfo[] }) {
   const { pref, setPref } = useTheme();
@@ -35,6 +36,7 @@ export default function ThemeSwitcher({ className = "" }: { className?: string }
   const { pref, setPref } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const popStyle = usePopoverStyle(open, ref, 256);
 
   useEffect(() => {
     if (!open) return;
@@ -61,7 +63,8 @@ export default function ThemeSwitcher({ className = "" }: { className?: string }
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-[200] mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-gray-600 bg-gray-800 p-1 shadow-2xl"
+          style={popStyle}
+          className="z-[200] rounded-lg border border-gray-600 bg-gray-800 p-1 shadow-2xl"
         >
           <button
             type="button"

@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import { Smartphone } from "lucide-react";
+import { usePopoverStyle } from "./popoverPos";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -89,6 +90,7 @@ export default function InstallButton({ className = "" }: { className?: string }
   const { canPrompt, standalone, platform, isIosChrome, install } = usePwa();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const popStyle = usePopoverStyle(open, ref, 288);
   const [diag, setDiag] = useState<{ secure: boolean; sw: string; manifest: string } | null>(null);
 
   // Ko uporabnik odpre navodila, preverimo, zakaj namestitev morda ni na voljo.
@@ -142,7 +144,7 @@ export default function InstallButton({ className = "" }: { className?: string }
         <Smartphone size={14} />
       </button>
       {open && (
-        <div role="dialog" aria-label="Namestitev aplikacije" className="absolute right-0 top-full z-[200] mt-1 w-72 max-w-[calc(100vw-1.5rem)] rounded-lg border border-gray-600 bg-gray-800 p-3 text-xs shadow-2xl">
+        <div role="dialog" aria-label="Namestitev aplikacije" style={popStyle} className="z-[200] rounded-lg border border-gray-600 bg-gray-800 p-3 text-xs shadow-2xl">
           <div className="mb-1 font-bold text-gray-100">Namesti kot aplikacijo</div>
           {platform === "ios" ? (
             <ol className="list-decimal space-y-1 pl-4 text-gray-300">

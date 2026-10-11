@@ -3,7 +3,7 @@
  * - NE predpomni API-jev ne strani z osebnimi podatki: vse, kar je za prijavo, gre vedno na omrežje.
  * - Predpomni samo statične, neodvisne datoteke (/_next/static, /icons, offline.html).
  * Ob spremembi te datoteke povišaj VERSION. */
-const VERSION = "v1";
+const VERSION = "v2";
 const CACHE = `strom-static-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];

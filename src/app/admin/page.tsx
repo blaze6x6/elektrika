@@ -54,6 +54,16 @@ export default async function AdminPage() {
           </div>
         </Link>
 
+        <Link href="/admin/solaredge" className="block bg-gray-800 hover:bg-gray-700 rounded-xl p-6 transition-colors">
+          <div className="flex items-center gap-4">
+            <div className="bg-amber-600 p-3 rounded-lg"><Zap size={24} /></div>
+            <div>
+              <h2 className="text-lg font-bold">SolarEdge API v2</h2>
+              <p className="text-gray-400 text-sm">Poveži račun (OAuth) in preveri odgovore API-ja v2.</p>
+            </div>
+          </div>
+        </Link>
+
         <Link href="/admin/audit" className="block bg-gray-800 hover:bg-gray-700 rounded-xl p-6 transition-colors">
           <div className="flex items-center gap-4">
             <div className="bg-orange-600 p-3 rounded-lg"><History size={24} /></div>

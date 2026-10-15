@@ -6,6 +6,8 @@ import { Cooldown } from "@/lib/rate-limit";
 import { isValidMonth, monthRange, daysInMonth } from "@/lib/validate";
 import { upsertDailyValues, type DailyInput } from "@/lib/sync-store";
 import { hourlyWhToBlocks } from "@/lib/blocks";
+import { connectionStatus } from "@/lib/solaredge-v2";
+import { syncSolarEdgeV2 } from "@/lib/solaredge-v2-sync";
 
 const cooldown = new Cooldown(30_000); // zaščita kvote zunanjih API-jev (SolarEdge ~300/dan)
 
@@ -313,13 +315,30 @@ export async function POST(request: Request) {
 
   const seKey = process.env.SOLAREDGE_API_KEY;
   const seSite = process.env.SOLAREDGE_SITE_ID;
-  if (seKey && seSite) {
-    const r = await syncSolarEdge(seSite, seKey, month);
+  // SOLAREDGE_API_VERSION: "auto" (privzeto: v2, če je povezan z OAuth, sicer v1) | "v1" | "v2"
+  const want = (process.env.SOLAREDGE_API_VERSION || "auto").toLowerCase();
+  const v2ok = want !== "v1" && (await connectionStatus().catch(() => null))?.connected === true;
+  const v1ok = want !== "v2" && !!seKey && !!seSite;
+  if (v2ok) {
+    const r = await syncSolarEdgeV2(month);
+    results.push(...r.results);
+    rows.push(...r.rows);
+    if (r.failed && v1ok) {
+      results.push("ℹ️ SolarEdge v2 ni uspel – poskušam še v1 (velja do 3. 11. 2026).");
+      const r1 = await syncSolarEdge(seSite!, seKey!, month);
+      results.push(...r1.results);
+      rows.push(...r1.rows);
+      hardFail ||= r1.failed;
+    } else {
+      hardFail ||= r.failed;
+    }
+  } else if (v1ok) {
+    const r = await syncSolarEdge(seSite!, seKey!, month);
     results.push(...r.results);
     rows.push(...r.rows);
     hardFail ||= r.failed;
   } else {
-    results.push("ℹ️ SolarEdge: API ključi niso nastavljeni");
+    results.push("ℹ️ SolarEdge: ni povezave v2 (OAuth) niti API ključev v1");
   }
 
   const mEmail = process.env.MELCLOUD_EMAIL;

@@ -18,7 +18,7 @@ export const EMAIL_SETTING_KEYS = [
   "alert_threshold",
 ] as const;
 
-export const SECRET_SETTING_KEYS = ["smtp_pass"];
+export const SECRET_SETTING_KEYS = ["smtp_pass", "se2_access", "se2_refresh"];
 
 export async function loadAllSettings(): Promise<Record<string, string>> {
   const rows = await db.select().from(appSettings);

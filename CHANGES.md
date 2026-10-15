@@ -123,3 +123,38 @@ Odprte točke: preveri obnašanje MojElektro (`endTime`, granularnost odčitkov)
 - Nova kartica »🌙 Hipotetična poraba brez sončne«: povzetek (uvoz + samooskrba = brez sončne) in 5 ploščic po blokih
   (kWh, delež, vrstica »uvoz + samooskrba«), aktivni bloki sezone poudarjeni; vir samooskrbe (izmerjeni/ocenjeni dnevi).
 - Kartice blokov kažejo še strošek energije v bloku z DDV (energija + omrežnina bloka + prispevki + trošarina) in ceno €/kWh; spodaj skupni znesek brez sončne vključno s fiksnimi stroški (moč, SPTE, nadomestilo).
+- Kartica hipotetične porabe je premaknjena tik pod tabelo »BREZ sončne«.
+
+## Kalkulator: časovnica blokov
+- Nova kartica »🕒 Časovnica blokov«: 24-urni barvni trak za izbran dan (privzeto danes) z oznako trenutnega časa, legenda z urami in omrežnino po blokih, oznaka najcenejšega/najdražjega bloka in nasvet za najcenejši čas polnjenja.
+- Dan je označen kot delovni/dela prost (sobota, nedelja, praznik) in glede na sezono; uvoz iz MojElektro se prikaže ob blokih za izbrani dan.
+- Zložljiv pregled celega meseca: vrstica za vsak dan s 24 urami, vikendi/prazniki so vidno drugačni; klik izbere dan.
+
+## Nova ikona aplikacije
+- Moderna ikona »sonce s strelo« (oranžno sonce z žarki, svetla strela, modro ozadje): `icons/icon.svg`, `icon-192/512.png`, `icon-maskable-512.png`, `apple-touch-icon.png`, `favicon.ico`.
+- `public/sw.js`: VERSION v2, da se stare ikone izbrišejo iz predpomnilnika.
+- Nameščena PWA ikona na telefonu se ne osveži vedno sama: aplikacijo odstranite in jo znova namestite.
+
+## Prijavno okno
+- Pod prijavnim oknom je dodan podpis »Created by Matjaž Tekavec« (`src/app/login/page.tsx`).
+
+## Popravek: paleta tem in okno za namestitev izven zaslona
+- V pokončnem pogledu na telefonu se je okno odprlo levo od gumba in delno izven zaslona. Zdaj je pozicionirano glede na gumb in vedno omejeno na vidno področje (`src/lib/popoverPos.ts`, uporabljata `ThemeSwitcher.tsx` in `pwa.tsx`). Pri nizkem zaslonu (ležeče) se okno po potrebi pomika.
+
+## SolarEdge API v2: povezava (OAuth) in diagnostika – 1. faza
+V1 preneha delovati 3. 11. 2026. Ta različica doda prijavo za v2 (sinhronizacija še uporablja v1):
+- `src/lib/solaredge-v2.ts`: OAuth 2.0 (Authorization Code), shranjevanje žetonov v bazo (šifrirano), osveževanje (enkratni osveževalni žeton, serializirano), `v2Get()` z ponovitvijo ob 401.
+- Poti: `/api/solaredge/oauth/{start,callback,disconnect,status}`, `/api/solaredge/v2/diag` (samo skrbnik, samo branje).
+- Nova stran **Administracija → SolarEdge API v2**: povezava, odklop, diagnostika z neobdelanimi odgovori.
+- `.env`: `SOLAREDGE_CLIENT_ID`, `SOLAREDGE_CLIENT_SECRET`, neobvezno `SOLAREDGE_REDIRECT_URI`. Redirect URL v razvijalski konzoli: `https://<domena>/api/solaredge/oauth/callback`.
+
+
+## SolarEdge API v2: sinhronizacija podatkov – 2. faza
+- Sinhronizacija (`/api/sync`) zdaj bere iz **v2 `meters/telemetry`**, če je SolarEdge povezan (OAuth). `SOLAREDGE_API_VERSION=auto|v1|v2` (privzeto `auto`); ob napaki v2 se poskusi še v1 (do 3. 11. 2026).
+- Dnevni podatki (proizvodnja, skupna poraba): 1 klic za cel mesec (resolution=DAY).
+- Urni podatki (samooskrba = poraba − uvoz, uvoz po blokih): 1 klic na dan (API dovoli največ 24 h pri HOUR). Prenesejo se samo manjkajoči dnevi + včeraj/danes, največ `SOLAREDGE_V2_HOURLY_PER_RUN` (privzeto 8) na sinhronizacijo → varno za 10 klicev/min in 2000 kreditov/mesec. Zgodovino dopolniš z več zaporednimi sinhronizacijami.
+- Obravnava 429: `x-ratelimit-remaining-minute` = 0 → omejitev na minuto; > 0 → porabljeni mesečni krediti.
+- Novo: `src/lib/solaredge-v2-parse.ts` (čist razčlenjevalnik, testiran), `src/lib/solaredge-v2-sync.ts`.
+- Opomba: »live« pretok moči (`/api/solaredge/live`) je še v1 (v2 ga ima samo v naprednem paketu).
+- Povezava (OAuth) dopolnjena po »Homeowner and Self-Access Guide«: avtorizacija pošlje `scope`, `redirect_uri`, `state` in `access_duration=24` (24-mesečna odobritev), zamenjava kode pošlje `redirect_uri`. **Osveževalni žeton velja 30 dni** – sinhronizacija ga obnovi ob vsakem klicu, zato mora teči vsaj enkrat mesečno (sicer je treba znova »Poveži SolarEdge«).
+- Varčevanje s krediti (v2): dnevni odgovor se predpomni (15 min za tekoči mesec, 6 h za pretekle); urni podatki se prenesejo samo za dneve, ki jih še nimamo ali so bili preneseni pred koncem dneva; današnji dan se po urah ne prenaša. Običajna sinhronizacija = 1–2 kredita, ponovna ročna sinhronizacija znotraj 15 min = 0. Rezultat sinhronizacije izpiše porabljene kredite.

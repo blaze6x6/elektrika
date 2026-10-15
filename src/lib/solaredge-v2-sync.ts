@@ -64,13 +64,25 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
         return out;
       }
       dayBody = dayRes.body;
-      dayCache.set(month, { at: Date.now(), body: dayBody });
+      // praznega odgovora ne predpomnimo (da popravek takoj učinkuje)
+      if (pickMetric(dayBody, "productionEnergy").points.length + pickMetric(dayBody, "consumptionEnergy").points.length > 0) {
+        dayCache.set(month, { at: Date.now(), body: dayBody });
+      }
     }
 
     const prod = dailyKwh(pickMetric(dayBody, "productionEnergy").points);
     const cons = dailyKwh(pickMetric(dayBody, "consumptionEnergy").points);
     for (const [date, v] of prod) out.rows.push({ date, columnKey: "solarna", value: v });
     for (const [date, v] of cons) out.rows.push({ date, columnKey: "skupna_poraba", value: v });
+    if (prod.size === 0 && cons.size === 0) {
+      // pomoč pri diagnozi: oblika odgovora (brez vrednosti)
+      const b = dayBody as Record<string, unknown> | null;
+      const m = (b?.meters ?? null) as unknown;
+      const first = m && typeof m === "object" && !Array.isArray(m) ? Object.values(m as object)[0] : Array.isArray(m) ? m[0] : null;
+      out.results.push(
+        `🔎 Oblika odgovora: ključi=${b && typeof b === "object" ? Object.keys(b).join(",") : typeof b}; meters=${Array.isArray(m) ? "seznam" : m && typeof m === "object" ? Object.keys(m as object).length + " merilnikov" : "ni"}; prvi=${first && typeof first === "object" ? Object.keys(first as object).join(",") : "–"}; okno=${from} → ${to}`
+      );
+    }
     out.results.push(
       prod.size > 0 ? `✅ SolarEdge v2 proizvodnja: ${prod.size} dni` : "⚠️ SolarEdge v2 proizvodnja: ni podatkov (merilnik proizvodnje?)"
     );

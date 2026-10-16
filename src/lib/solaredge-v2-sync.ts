@@ -6,7 +6,7 @@ import { v2Get, type V2Result } from "@/lib/solaredge-v2";
 import { addDaysStr, monthRange } from "@/lib/validate";
 import type { DailyInput } from "@/lib/sync-store";
 import {
-  dailyKwh, dayWindow, hourlySelfConsumption, localMidnight, pickMetric, pointsToBlocks,
+  dailyKwh, dayWindow, deriveEnergy, flatSeries, localMidnight, pointsToBlocks, sumMetric, type Point,
 } from "@/lib/solaredge-v2-parse";
 
 export type V2Step = { results: string[]; rows: DailyInput[]; failed: boolean };
@@ -14,7 +14,7 @@ export type V2Step = { results: string[]; rows: DailyInput[]; failed: boolean };
 /** Največ urnih klicev (dni) na eno sinhronizacijo – 10 klicev/min in 2000 kreditov/mesec v brezplačnem paketu. */
 const hourlyPerRun = () => {
   const n = Number(process.env.SOLAREDGE_V2_HOURLY_PER_RUN);
-  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 8;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 3;
 };
 
 /** 429: x-ratelimit-remaining-minute = 0 → omejitev na minuto; > 0 → porabljeni mesečni krediti. */
@@ -34,7 +34,7 @@ function httpMessage(what: string, r: V2Result): string {
 }
 
 /** Dnevni odgovor predpomnimo: SolarEdge osvežuje podatke na 15 min, pretekli meseci se ne spreminjajo. */
-const dayCache = new Map<string, { at: number; body: unknown }>();
+const dayCache = new Map<string, { at: number; d: ReturnType<typeof deriveEnergy> }>();
 const CACHE_CURRENT_MS = 15 * 60_000;
 const CACHE_PAST_MS = 6 * 3_600_000;
 
@@ -46,54 +46,69 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
   const today = todayLocal();
 
   try {
-    // 1. Dnevni podatki za cel mesec – 1 klic (DAY: do 1 meseca)
+    let credits = 0;
+
+    /** Merilniki (uvoz/izvoz …) in po potrebi inverterji (proizvodnja) za eno okno. */
+    const fetchPair = async (params: Record<string, string>, what: string) => {
+      const m = await v2Get("/meters/telemetry", params);
+      credits++;
+      if (m.status !== 200) return { err: httpMessage(`${what} (merilniki)`, m) };
+      let alt: Point[] | null = null;
+      if (deriveEnergy(m.body, null).needInverters) {
+        // proizvodnja: najprej /energy (izračunana PV proizvodnja elektrarne, enako kot v1), rezerva: vsota inverterjev
+        const e = await v2Get("/energy", params);
+        credits++;
+        alt = e.status === 200 ? flatSeries(e.body) : [];
+        if (alt.length === 0) {
+          const i = await v2Get("/inverters/telemetry", params);
+          credits++;
+          if (i.status !== 200) {
+            const hint = i.status === 403 ? " – potrebno je dovoljenje DEVICE_DATA: odklopi in znova poveži SolarEdge" : "";
+            return { err: httpMessage(`${what} (proizvodnja)`, e.status === 200 ? i : e) + hint };
+          }
+          alt = sumMetric(i.body, "energy", "inverters");
+        }
+      }
+      return { d: deriveEnergy(m.body, alt) };
+    };
+
+    // 1. Dnevni podatki za cel mesec (DAY: do 1 meseca)
     const from = localMidnight(start).iso;
     const to = localMidnight(addDaysStr(end, 1)).iso;
-    let credits = 0;
     const ttl = month === today.slice(0, 7) ? CACHE_CURRENT_MS : CACHE_PAST_MS;
+    let d: ReturnType<typeof deriveEnergy>;
     const hit = dayCache.get(month);
-    let dayBody: unknown;
     if (hit && Date.now() - hit.at < ttl) {
-      dayBody = hit.body;
+      d = hit.d;
     } else {
-      const dayRes = await v2Get("/meters/telemetry", { from, to, resolution: "DAY" });
-      credits++;
-      if (dayRes.status !== 200) {
+      const r = await fetchPair({ from, to, resolution: "DAY" }, "dnevni podatki");
+      if ("err" in r) {
         out.failed = true;
-        out.results.push(`❌ SolarEdge v2 ${httpMessage("dnevni podatki", dayRes)} (porabljenih kreditov: ${credits})`);
+        out.results.push(`❌ SolarEdge v2 ${r.err} (porabljenih kreditov: ${credits})`);
         return out;
       }
-      dayBody = dayRes.body;
+      d = r.d;
       // praznega odgovora ne predpomnimo (da popravek takoj učinkuje)
-      if (pickMetric(dayBody, "productionEnergy").points.length + pickMetric(dayBody, "consumptionEnergy").points.length > 0) {
-        dayCache.set(month, { at: Date.now(), body: dayBody });
-      }
+      if (d.prod.length + d.cons.length > 0) dayCache.set(month, { at: Date.now(), d });
     }
 
-    const prod = dailyKwh(pickMetric(dayBody, "productionEnergy").points);
-    const cons = dailyKwh(pickMetric(dayBody, "consumptionEnergy").points);
+    const prod = dailyKwh(d.prod);
+    const cons = dailyKwh(d.cons);
     for (const [date, v] of prod) out.rows.push({ date, columnKey: "solarna", value: v });
     for (const [date, v] of cons) out.rows.push({ date, columnKey: "skupna_poraba", value: v });
-    if (prod.size === 0 && cons.size === 0) {
-      // pomoč pri diagnozi: oblika odgovora (brez vrednosti)
-      const b = dayBody as Record<string, unknown> | null;
-      const m = (b?.meters ?? null) as unknown;
-      const first = m && typeof m === "object" && !Array.isArray(m) ? Object.values(m as object)[0] : Array.isArray(m) ? m[0] : null;
-      out.results.push(
-        `🔎 Oblika odgovora: ključi=${b && typeof b === "object" ? Object.keys(b).join(",") : typeof b}; meters=${Array.isArray(m) ? "seznam" : m && typeof m === "object" ? Object.keys(m as object).length + " merilnikov" : "ni"}; prvi=${first && typeof first === "object" ? Object.keys(first as object).join(",") : "–"}; okno=${from} → ${to}`
-      );
-    }
     out.results.push(
-      prod.size > 0 ? `✅ SolarEdge v2 proizvodnja: ${prod.size} dni` : "⚠️ SolarEdge v2 proizvodnja: ni podatkov (merilnik proizvodnje?)"
+      prod.size > 0 ? `✅ SolarEdge v2 proizvodnja: ${prod.size} dni` : "⚠️ SolarEdge v2 proizvodnja: ni podatkov (niti merilnik niti inverterji ne poročajo energije)"
     );
     out.results.push(
-      cons.size > 0 ? `✅ SolarEdge v2 skupna poraba: ${cons.size} dni` : "⚠️ SolarEdge v2 poraba: ni podatkov (potreben je merilnik porabe)"
+      cons.size > 0
+        ? `✅ SolarEdge v2 skupna poraba (proizvodnja + uvoz − izvoz): ${cons.size} dni`
+        : "⚠️ SolarEdge v2 poraba: ni podatkov (potrebna sta proizvodnja in uvoz)"
     );
 
-    // 2. Urni podatki → samooskrba in uvoz po blokih. En klic = en dan (največ 24 h), zato samo dnevi, ki jih še nimamo.
+    // 2. Urni podatki → samooskrba in uvoz po blokih. En dan = 1–2 klica (največ 24 h na klic), zato samo dnevi, ki jih še nimamo.
     const limit = hourlyPerRun();
     const active = new Set<string>();
-    for (const m of [prod, cons]) for (const [d, v] of m) if (v > 0 && d <= today) active.add(d);
+    for (const m of [prod, cons]) for (const [dt, v] of m) if (v > 0 && dt <= today) active.add(dt);
 
     // »Dokončan« dan = urni podatki so bili preneseni šele po koncu tistega dne → se ne spremenijo več.
     const final = new Set(
@@ -107,24 +122,19 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
         .map((r) => String(r.date))
     );
     // današnjega dne ne prenašamo po urah (nepopoln); dnevni seštevek za danes pride že iz dnevnega klica
-    const todo = [...active].filter((d) => d < today && !final.has(d)).sort().reverse();
+    const todo = [...active].filter((x) => x < today && !final.has(x)).sort().reverse();
     const batch = todo.slice(0, limit);
 
     let done = 0;
     let stop = "";
     for (const date of batch) {
-      const w = dayWindow(date);
-      const r = await v2Get("/meters/telemetry", { ...w, resolution: "HOUR" });
-      credits++;
-      if (r.status !== 200) {
-        stop = httpMessage(`urni podatki ${date}`, r);
+      const r = await fetchPair({ ...dayWindow(date), resolution: "HOUR" }, `urni podatki ${date}`);
+      if ("err" in r) {
+        stop = r.err;
         break;
       }
-      const c = pickMetric(r.body, "consumptionEnergy").points;
-      const i = pickMetric(r.body, "importEnergy").points;
-      if (c.length === 0 || i.length === 0) continue;
-      const self = pointsToBlocks(hourlySelfConsumption(c, i)).get(date);
-      const buy = pointsToBlocks(i).get(date);
+      const self = pointsToBlocks(r.d.self).get(date);
+      const buy = pointsToBlocks(r.d.imp).get(date);
       if (!self || !buy) continue;
       self.forEach((kwh, k) => out.rows.push({ date, columnKey: `se_samo_blok${k + 1}`, value: kwh }));
       buy.forEach((kwh, k) => out.rows.push({ date, columnKey: `se_kup_blok${k + 1}`, value: kwh }));
@@ -139,7 +149,7 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
       out.results.push(`ℹ️ SolarEdge v2: za ${left} dni urni podatki še niso preneseni (največ ${limit} dni na sinhronizacijo) – ponovi sinhronizacijo.`);
     }
     if (batch.length > 0 && done === 0 && !stop) {
-      out.results.push("⚠️ SolarEdge v2 urni podatki: merilnik ne vrača porabe/uvoza po urah; kalkulator bo uporabil oceno.");
+      out.results.push("⚠️ SolarEdge v2 urni podatki: ni urnih vrednosti za samooskrbo/uvoz; kalkulator bo uporabil oceno.");
     }
   } catch (err) {
     out.failed = true;

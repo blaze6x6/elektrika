@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/guard";
 import { v2Get } from "@/lib/solaredge-v2";
 
 // Samo branje, samo znane poti (diagnostika – vsak klic porabi 1 kredit).
-const PATHS = new Set(["", "/overview", "/energy", "/power", "/lifetime-energy", "/meters/telemetry", "/devices"]);
+const PATHS = new Set(["", "/overview", "/energy", "/power", "/lifetime-energy", "/meters/telemetry", "/inverters/telemetry", "/devices"]);
 const RESOLUTIONS = new Set(["QUARTER_HOUR", "HOUR", "DAY", "WEEK", "MONTH", "YEAR", "TOTAL"]);
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/;
 

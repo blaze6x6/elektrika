@@ -19,8 +19,8 @@ type RawSeries = { unit?: unknown; values?: unknown };
  * (seštevanje bi lahko podvojilo energijo, če si dva merilnika delita isti tok).
  * Vrne tudi serijsko številko izbranega merilnika.
  */
-export function pickMetric(body: unknown, metric: string): { serial: string | null; points: Point[] } {
-  const meters = (body as { meters?: Record<string, Record<string, RawSeries>> } | null)?.meters;
+export function pickMetric(body: unknown, metric: string, container: "meters" | "inverters" = "meters"): { serial: string | null; points: Point[] } {
+  const meters = (body as Record<string, Record<string, Record<string, RawSeries>>> | null)?.[container];
   if (!meters || typeof meters !== "object") return { serial: null, points: [] };
 
   let best: { serial: string; points: Point[] } | null = null;
@@ -32,7 +32,7 @@ export function pickMetric(body: unknown, metric: string): { serial: string | nu
     for (const v of s.values as Array<{ timestamp?: unknown; value?: unknown }>) {
       if (v?.value === null || v?.value === undefined || typeof v.timestamp !== "string") continue;
       const wh = Number(v.value) * mult;
-      if (!Number.isFinite(wh)) continue;
+      if (!Number.isFinite(wh) || wh < -1e12) continue; // npr. -3.4e38 = »ni vrednosti«
       const loc = localIntervalStart(v.timestamp, 60, "start");
       if (!loc) continue;
       points.push({ date: loc.date, hour: loc.hour, wh });
@@ -40,6 +40,45 @@ export function pickMetric(body: unknown, metric: string): { serial: string | nu
     if (points.length > 0 && (!best || points.length > best.points.length)) best = { serial, points };
   }
   return { serial: best?.serial ?? null, points: best?.points ?? [] };
+}
+
+/** Ploska serija { unit, values: [{ timestamp, value }] } – npr. odgovor /sites/{id}/energy (proizvodnja elektrarne). */
+export function flatSeries(body: unknown): Point[] {
+  const b = body as { unit?: unknown; values?: unknown } | null;
+  if (!b || !Array.isArray(b.values)) return [];
+  return pickMetric({ meters: { x: { v: { unit: b.unit, values: b.values } } } }, "v").points;
+}
+
+/** Vsota metrike čez vse naprave (inverterji: vsak daje svoj del proizvodnje). */
+export function sumMetric(body: unknown, metric: string, container: "meters" | "inverters" = "inverters"): Point[] {
+  const devs = (body as Record<string, Record<string, Record<string, RawSeries>>> | null)?.[container];
+  if (!devs || typeof devs !== "object") return [];
+  const acc = new Map<string, Point>();
+  for (const serial of Object.keys(devs)) {
+    const one = pickMetric({ [container]: { [serial]: devs[serial] } }, metric, container).points;
+    for (const p of one) {
+      const k = `${p.date}|${p.hour}`;
+      const cur = acc.get(k);
+      if (cur) cur.wh += p.wh;
+      else acc.set(k, { ...p });
+    }
+  }
+  return [...acc.values()];
+}
+
+/** Združi točke po (datum, ura) z linearno kombinacijo: a·A + b·B + c·C … (manjkajoče serije štejejo kot 0, rezultat ≥ 0). */
+export function combine(terms: Array<{ k: number; points: Point[] }>, requireAll: number[] = [0]): Point[] {
+  const keys = new Map<string, Point>();
+  const vals = terms.map((t) => new Map(t.points.map((p) => [`${p.date}|${p.hour}`, p.wh])));
+  terms.forEach((t) => t.points.forEach((p) => keys.set(`${p.date}|${p.hour}`, { date: p.date, hour: p.hour, wh: 0 })));
+  const out: Point[] = [];
+  for (const [key, base] of keys) {
+    if (!requireAll.every((i) => vals[i].has(key))) continue;
+    let wh = 0;
+    terms.forEach((t, i) => (wh += t.k * (vals[i].get(key) ?? 0)));
+    out.push({ ...base, wh: Math.max(0, wh) });
+  }
+  return out;
 }
 
 /** DAY telemetrija → kWh po datumu (lokalni dan). */
@@ -70,6 +109,31 @@ export function hourlySelfConsumption(consumption: Point[], imported: Point[]): 
     out.push({ date: c.date, hour: c.hour, wh: Math.max(0, c.wh - i) });
   }
   return out;
+}
+
+/**
+ * Proizvodnja, uvoz, izvoz, poraba in samooskrba iz odgovora merilnikov (+ inverterjev, če merilnik ne poroča proizvodnje).
+ * Poraba = proizvodnja + uvoz − izvoz; samooskrba = proizvodnja − izvoz (SolarEdgeova definicija).
+ */
+export function deriveEnergy(meters: unknown, altProd: Point[] | null) {
+  const mProd = pickMetric(meters, "productionEnergy").points;
+  const prod: Point[] = mProd.length > 0 ? mProd : altProd ?? [];
+  const imp = pickMetric(meters, "importEnergy").points;
+  const exp = pickMetric(meters, "exportEnergy").points;
+  const mCons = pickMetric(meters, "consumptionEnergy").points;
+  const cons: Point[] =
+    mCons.length > 0
+      ? mCons
+      : prod.length > 0 && imp.length > 0
+        ? combine([{ k: 1, points: prod }, { k: 1, points: imp }, { k: -1, points: exp }], [1]) // proizvodnja/izvoz brez vrednosti (ponoči) = 0
+        : [];
+  const self: Point[] =
+    prod.length > 0 && exp.length > 0
+      ? combine([{ k: 1, points: prod }, { k: -1, points: exp }], [1])
+      : cons.length > 0 && imp.length > 0
+        ? combine([{ k: 1, points: cons }, { k: -1, points: imp }], [0, 1])
+        : [];
+  return { prod, imp, exp, cons, self, needInverters: mProd.length === 0 };
 }
 
 // ───────── lokalni čas (Europe/Ljubljana) → ISO z odmikom ─────────

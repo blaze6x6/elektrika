@@ -30,6 +30,8 @@ const dayStart = (offsetDays: number) => {
 
 const PRESETS: { label: string; path: string; resolution?: string; from?: () => string; to?: () => string }[] = [
   { label: "Meters: urna energija včeraj", path: "/meters/telemetry", resolution: "HOUR", from: () => iso(dayStart(-1)), to: () => iso(dayStart(0)) },
+  { label: "Inverterji: urna energija včeraj", path: "/inverters/telemetry", resolution: "HOUR", from: () => iso(dayStart(-1)), to: () => iso(dayStart(0)) },
+  { label: "Energija: urna proizvodnja včeraj", path: "/energy", resolution: "HOUR", from: () => iso(dayStart(-1)), to: () => iso(dayStart(0)) },
   { label: "Meters: dnevna energija (7 dni)", path: "/meters/telemetry", resolution: "DAY", from: () => iso(dayStart(-7)), to: () => iso(dayStart(0)) },
   { label: "Energija: dnevna proizvodnja (7 dni)", path: "/energy", resolution: "DAY", from: () => iso(dayStart(-7)), to: () => iso(dayStart(0)) },
   { label: "Naprave (merilniki, inverterji)", path: "/devices" },
@@ -182,6 +184,7 @@ export default function SolarEdgeAdmin() {
                 <option value="/power">/power</option>
                 <option value="/lifetime-energy">/lifetime-energy</option>
                 <option value="/meters/telemetry">/meters/telemetry</option>
+                <option value="/inverters/telemetry">/inverters/telemetry</option>
                 <option value="/devices">/devices</option>
               </select>
             </label>

@@ -9,6 +9,8 @@ import {
   dailyKwh, dayWindow, deriveEnergy, flatSeries, localMidnight, pointsToBlocks, sumMetric, type Point,
 } from "@/lib/solaredge-v2-parse";
 
+type PairResult = { err: string; d: null } | { err: undefined; d: ReturnType<typeof deriveEnergy> };
+
 export type V2Step = { results: string[]; rows: DailyInput[]; failed: boolean };
 
 /** Največ urnih klicev (dni) na eno sinhronizacijo – 10 klicev/min in 2000 kreditov/mesec v brezplačnem paketu. */
@@ -49,10 +51,10 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
     let credits = 0;
 
     /** Merilniki (uvoz/izvoz …) in po potrebi inverterji (proizvodnja) za eno okno. */
-    const fetchPair = async (params: Record<string, string>, what: string) => {
+    const fetchPair = async (params: Record<string, string>, what: string): Promise<PairResult> => {
       const m = await v2Get("/meters/telemetry", params);
       credits++;
-      if (m.status !== 200) return { err: httpMessage(`${what} (merilniki)`, m) };
+      if (m.status !== 200) return { err: httpMessage(`${what} (merilniki)`, m), d: null };
       let alt: Point[] | null = null;
       if (deriveEnergy(m.body, null).needInverters) {
         // proizvodnja: najprej /energy (izračunana PV proizvodnja elektrarne, enako kot v1), rezerva: vsota inverterjev
@@ -64,12 +66,12 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
           credits++;
           if (i.status !== 200) {
             const hint = i.status === 403 ? " – potrebno je dovoljenje DEVICE_DATA: odklopi in znova poveži SolarEdge" : "";
-            return { err: httpMessage(`${what} (proizvodnja)`, e.status === 200 ? i : e) + hint };
+            return { err: httpMessage(`${what} (proizvodnja)`, e.status === 200 ? i : e) + hint, d: null };
           }
           alt = sumMetric(i.body, "energy", "inverters");
         }
       }
-      return { d: deriveEnergy(m.body, alt) };
+      return { err: undefined, d: deriveEnergy(m.body, alt) };
     };
 
     // 1. Dnevni podatki za cel mesec (DAY: do 1 meseca)
@@ -82,7 +84,7 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
       d = hit.d;
     } else {
       const r = await fetchPair({ from, to, resolution: "DAY" }, "dnevni podatki");
-      if ("err" in r) {
+      if (r.err !== undefined) {
         out.failed = true;
         out.results.push(`❌ SolarEdge v2 ${r.err} (porabljenih kreditov: ${credits})`);
         return out;
@@ -129,7 +131,7 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
     let stop = "";
     for (const date of batch) {
       const r = await fetchPair({ ...dayWindow(date), resolution: "HOUR" }, `urni podatki ${date}`);
-      if ("err" in r) {
+      if (r.err !== undefined) {
         stop = r.err;
         break;
       }

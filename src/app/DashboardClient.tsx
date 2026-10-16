@@ -35,7 +35,6 @@ export default function DashboardClient({ isAdmin = false }: { isAdmin?: boolean
   const [importResult, setImportResult] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [liveData, setLiveData] = useState<{ pv: number; load: number; grid: number; gridExporting: boolean } | null>(null);
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
   const touchStart = useRef<number>(0);
 
@@ -68,13 +67,6 @@ export default function DashboardClient({ isAdmin = false }: { isAdmin?: boolean
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Live data: naloži samo enkrat ob zagonu
-  useEffect(() => {
-    fetch("/api/solaredge/live")
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d && !d.error) setLiveData(d); })
-      .catch(() => {});
-  }, []);
 
   const buildLookup = (rows: DailyRow[]) => {
     const m: Record<string, Record<string, number>> = {};
@@ -341,35 +333,6 @@ export default function DashboardClient({ isAdmin = false }: { isAdmin?: boolean
         <div className="mx-2 mb-1 p-2 bg-gray-800 border border-gray-600 rounded text-xs space-y-0.5 max-h-32 overflow-y-auto">
           <div className="flex justify-between"><span className="font-bold text-gray-300">Rezultati:</span><button onClick={() => setSyncResults(null)} className="text-gray-500">✕</button></div>
           {syncResults.map((r, i) => <div key={i} className={r.startsWith("✅") ? "text-green-400" : r.startsWith("❌") ? "text-red-400" : r.startsWith("ℹ️") ? "text-gray-300" : "text-yellow-400"}>{r}</div>)}
-        </div>
-      )}
-
-      {/* Live Data Dashboard */}
-      {liveData && (
-        <div className="mx-2 mb-2 grid grid-cols-3 gap-1">
-          <div className="bg-green-900/20 border border-green-800/40 rounded-lg p-2 text-center relative overflow-hidden">
-            <div className="text-[8px] text-green-400 uppercase font-bold mb-1 flex items-center justify-center gap-1">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
-              </span>
-              Sonce
-            </div>
-            <div className="text-sm font-black text-green-300">{liveData.pv.toFixed(2)} <span className="text-[10px] font-normal">kW</span></div>
-          </div>
-          <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-2 text-center">
-            <div className="text-[8px] text-blue-400 uppercase font-bold mb-1">Hiša</div>
-            <div className="text-sm font-black text-blue-300">{liveData.load.toFixed(2)} <span className="text-[10px] font-normal">kW</span></div>
-          </div>
-          <div className={`rounded-lg p-2 text-center border ${liveData.gridExporting ? "bg-green-900/20 border-green-800/40" : "bg-red-900/20 border-red-800/40"}`}>
-            <div className={`text-[8px] uppercase font-bold mb-1 ${liveData.gridExporting ? "text-green-400" : "text-red-400"}`}>Omrežje</div>
-            <div className="text-sm font-black">
-              <span className={liveData.gridExporting ? "text-green-300" : "text-red-300"}>
-                {liveData.grid.toFixed(2)}
-                <span className="text-[10px] font-normal ml-0.5">kW {liveData.gridExporting ? "↑" : "↓"}</span>
-              </span>
-            </div>
-          </div>
         </div>
       )}
 

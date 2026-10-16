@@ -6,7 +6,7 @@ import { v2Get, type V2Result } from "@/lib/solaredge-v2";
 import { addDaysStr, monthRange } from "@/lib/validate";
 import type { DailyInput } from "@/lib/sync-store";
 import {
-  dailyKwh, dayWindow, deriveEnergy, flatSeries, localMidnight, pointsToBlocks, sumMetric, type Point,
+  dailyKwh, dayWindow, deriveEnergy, flatSeries, localMidnight, mergeDerived, pointsToBlocks, sumMetric, type Point,
 } from "@/lib/solaredge-v2-parse";
 
 type PairResult = { err: string; d: null } | { err: undefined; d: ReturnType<typeof deriveEnergy> };
@@ -130,13 +130,24 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
     let done = 0;
     let stop = "";
     for (const date of batch) {
-      const r = await fetchPair({ ...dayWindow(date), resolution: "HOUR" }, `urni podatki ${date}`);
+      const w = dayWindow(date);
+      const r = await fetchPair({ from: w.from, to: w.to, resolution: "HOUR" }, `urni podatki ${date}`);
       if (r.err !== undefined) {
         stop = r.err;
         break;
       }
-      const self = pointsToBlocks(r.d.self).get(date);
-      const buy = pointsToBlocks(r.d.imp).get(date);
+      let dd = r.d;
+      if (w.extra) {
+        // 25-urni dan: zadnja ura je v dodatnem oknu (+1–2 kredita)
+        const r2 = await fetchPair({ from: w.extra.from, to: w.extra.to, resolution: "HOUR" }, `urni podatki ${date} (zadnja ura)`);
+        if (r2.err !== undefined) {
+          stop = r2.err;
+          break;
+        }
+        dd = mergeDerived(dd, r2.d);
+      }
+      const self = pointsToBlocks(dd.self).get(date);
+      const buy = pointsToBlocks(dd.imp).get(date);
       if (!self || !buy) continue;
       self.forEach((kwh, k) => out.rows.push({ date, columnKey: `se_samo_blok${k + 1}`, value: kwh }));
       buy.forEach((kwh, k) => out.rows.push({ date, columnKey: `se_kup_blok${k + 1}`, value: kwh }));
@@ -144,6 +155,8 @@ export async function syncSolarEdgeV2(month: string): Promise<V2Step> {
     }
 
     out.results.push(`ℹ️ SolarEdge v2: porabljenih kreditov: ${credits}${credits === 0 ? " (vse iz predpomnilnika)" : ""}`);
+    const complete = [...active].filter((x) => x < today && final.has(x)).length;
+    if (complete > 0) out.results.push(`ℹ️ SolarEdge: urni podatki (bloki) so že shranjeni za ${complete} dni – ne prenašam znova.`);
     if (done > 0) out.results.push(`✅ SolarEdge v2 samooskrba in uvoz po blokih: ${done} dni`);
     if (stop) out.results.push(`⚠️ SolarEdge v2 ${stop}`);
     const left = todo.length - batch.length;

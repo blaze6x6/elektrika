@@ -8,7 +8,10 @@ import { hourlyWhToBlocks, localIntervalStart } from "./blocks";
  * Časovni žig = ZAČETEK intervala. Čiste funkcije (brez baze in omrežja) → testi.
  */
 
-export type Point = { date: string; hour: number; wh: number };
+/** ts = začetek intervala (ms) – ločuje dvakratno uro ob prehodu na zimski čas (25-urni dan). */
+export type Point = { date: string; hour: number; wh: number; ts?: number };
+
+const keyOf = (p: Point) => (p.ts !== undefined ? `t${p.ts}` : `${p.date}|${p.hour}`);
 
 const UNIT_TO_WH: Record<string, number> = { WH: 1, KWH: 1000, MWH: 1_000_000 };
 
@@ -35,7 +38,7 @@ export function pickMetric(body: unknown, metric: string, container: "meters" | 
       if (!Number.isFinite(wh) || wh < -1e12) continue; // npr. -3.4e38 = »ni vrednosti«
       const loc = localIntervalStart(v.timestamp, 60, "start");
       if (!loc) continue;
-      points.push({ date: loc.date, hour: loc.hour, wh });
+      points.push({ date: loc.date, hour: loc.hour, wh, ts: Date.parse(v.timestamp) });
     }
     if (points.length > 0 && (!best || points.length > best.points.length)) best = { serial, points };
   }
@@ -57,7 +60,7 @@ export function sumMetric(body: unknown, metric: string, container: "meters" | "
   for (const serial of Object.keys(devs)) {
     const one = pickMetric({ [container]: { [serial]: devs[serial] } }, metric, container).points;
     for (const p of one) {
-      const k = `${p.date}|${p.hour}`;
+      const k = keyOf(p);
       const cur = acc.get(k);
       if (cur) cur.wh += p.wh;
       else acc.set(k, { ...p });
@@ -69,8 +72,8 @@ export function sumMetric(body: unknown, metric: string, container: "meters" | "
 /** Združi točke po (datum, ura) z linearno kombinacijo: a·A + b·B + c·C … (manjkajoče serije štejejo kot 0, rezultat ≥ 0). */
 export function combine(terms: Array<{ k: number; points: Point[] }>, requireAll: number[] = [0]): Point[] {
   const keys = new Map<string, Point>();
-  const vals = terms.map((t) => new Map(t.points.map((p) => [`${p.date}|${p.hour}`, p.wh])));
-  terms.forEach((t) => t.points.forEach((p) => keys.set(`${p.date}|${p.hour}`, { date: p.date, hour: p.hour, wh: 0 })));
+  const vals = terms.map((t) => new Map(t.points.map((p) => [keyOf(p), p.wh])));
+  terms.forEach((t) => t.points.forEach((p) => keys.set(keyOf(p), { date: p.date, hour: p.hour, wh: 0, ts: p.ts })));
   const out: Point[] = [];
   for (const [key, base] of keys) {
     if (!requireAll.every((i) => vals[i].has(key))) continue;
@@ -152,12 +155,24 @@ export function localMidnight(date: string): { iso: string; ms: number } {
   return { iso: `${date}T00:00:00+01:00`, ms };
 }
 
-/** Okno za urni klic enega dneva (največ 24 h – omejitev API-ja; ob 25-urnem dnevu zadnja ura odpade). */
-export function dayWindow(date: string): { from: string; to: string } {
+/**
+ * Okna za urne klice enega dneva. API dovoli največ 24 h na klic, zato ima 25-urni dan (prehod na zimski čas)
+ * še dodatno okno za zadnjo uro (`extra`).
+ */
+export function dayWindow(date: string): { from: string; to: string; extra?: { from: string; to: string } } {
   const a = localMidnight(date);
   const next = new Date(Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10) + 1));
   const nd = `${next.getUTCFullYear()}-${hh(next.getUTCMonth() + 1)}-${hh(next.getUTCDate())}`;
   const b = localMidnight(nd);
   if (b.ms - a.ms <= 24 * 3_600_000) return { from: a.iso, to: b.iso };
-  return { from: a.iso, to: new Date(a.ms + 24 * 3_600_000).toISOString() };
+  const cut = new Date(a.ms + 24 * 3_600_000).toISOString();
+  return { from: a.iso, to: cut, extra: { from: cut, to: b.iso } };
+}
+
+/** Združi dva izračuna (npr. dve okni istega dne). */
+export function mergeDerived(a: ReturnType<typeof deriveEnergy>, b: ReturnType<typeof deriveEnergy>) {
+  return {
+    prod: [...a.prod, ...b.prod], imp: [...a.imp, ...b.imp], exp: [...a.exp, ...b.exp],
+    cons: [...a.cons, ...b.cons], self: [...a.self, ...b.self], needInverters: a.needInverters || b.needInverters,
+  };
 }

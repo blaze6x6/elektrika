@@ -33,6 +33,21 @@ export const DEFAULT_DARK: ThemeId = "dark";
 export const DEFAULT_LIGHT: ThemeId = "light";
 export const STORAGE_KEY = "theme";
 
+/** Sistemske vrstice telefona (statusna vrstica / naslovna vrstica brskalnika): sledi temi, vedno svetle, vedno temne. */
+export type BarsPref = "theme" | "light" | "dark";
+export const BARS_KEY = "bars";
+export const BARS_LIGHT = "#f3f4f6";
+export const BARS_DARK = "#111827";
+export function isBarsPref(v: unknown): v is BarsPref {
+  return v === "theme" || v === "light" || v === "dark";
+}
+/** Barva za meta theme-color. */
+export function barColor(bars: BarsPref, theme: ThemeId): string {
+  if (bars === "light") return BARS_LIGHT;
+  if (bars === "dark") return BARS_DARK;
+  return themeInfo(theme).swatch[0];
+}
+
 export function isThemeId(v: unknown): v is ThemeId {
   return typeof v === "string" && THEMES.some(t => t.id === v);
 }
@@ -64,5 +79,5 @@ export function chartColors(light: boolean) {
 export function themeInitScript(): string {
   const light = THEMES.filter(t => t.light).map(t => t.id);
   const ids = THEMES.map(t => t.id);
-  return `(function(){try{var ids=${JSON.stringify(ids)},light=${JSON.stringify(light)};var p=localStorage.getItem("${STORAGE_KEY}");if(p!=="auto"&&ids.indexOf(p)<0)p="auto";var t=p;if(p==="auto")t=window.matchMedia("(prefers-color-scheme: light)").matches?"${DEFAULT_LIGHT}":"${DEFAULT_DARK}";var d=document.documentElement;d.setAttribute("data-theme",t);d.setAttribute("data-mode",light.indexOf(t)>=0?"light":"dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");document.documentElement.setAttribute("data-mode","dark");}})();`;
+  return `(function(){try{var ids=${JSON.stringify(ids)},light=${JSON.stringify(light)};var p=localStorage.getItem("${STORAGE_KEY}");if(p!=="auto"&&ids.indexOf(p)<0)p="auto";var t=p;if(p==="auto")t=window.matchMedia("(prefers-color-scheme: light)").matches?"${DEFAULT_LIGHT}":"${DEFAULT_DARK}";var d=document.documentElement;d.setAttribute("data-theme",t);d.setAttribute("data-mode",light.indexOf(t)>=0?"light":"dark");var b=localStorage.getItem("${BARS_KEY}");var sw=${JSON.stringify(Object.fromEntries(THEMES.map(x=>[x.id,x.swatch[0]])))};var c=b==="light"?"${BARS_LIGHT}":b==="dark"?"${BARS_DARK}":sw[t];var m=document.querySelector('meta[name="theme-color"]');if(!m){m=document.createElement("meta");m.name="theme-color";document.head.appendChild(m);}m.content=c;}catch(e){document.documentElement.setAttribute("data-theme","dark");document.documentElement.setAttribute("data-mode","dark");}})();`;
 }

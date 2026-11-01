@@ -6,10 +6,17 @@ import { alertHtml, buildTransport, readSmtpConfig, reportHtml } from "@/lib/mai
 import { loadMonth, monthTotals } from "@/lib/report-data";
 import { isValidMonth, localMonthStr, yesterdayLocalStr } from "@/lib/validate";
 import { logAction } from "@/lib/audit";
+import { db } from "@/db";
+import { auditLog } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
+import { saveSetting } from "@/lib/settings";
+import { readSchedule, reportDue } from "@/lib/report-schedule";
 
 /**
  * Samo za cron (glava x-cron-secret) – skrivnost v telesu ni več sprejeta.
- * Telo: { type: "report" | "alert", month?: "YYYY-MM" }
+ * Telo: { type: "report" | "alert", month?: "YYYY-MM", scheduled?: true }
+ * scheduled=true (cron na vsakih 10 min): pošlje poročilo za prejšnji mesec samo, če je nastavljeni termin
+ * (Administracija → E-mail: dan/ura/minuta) dosežen in poročilo za ta mesec še ni bilo poslano.
  */
 export async function POST(request: Request) {
   if (!cronAuthorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,7 +45,18 @@ export async function POST(request: Request) {
 
   try {
     if (type === "report") {
-      const month = (body.month as string | undefined) ?? localMonthStr();
+      let month = (body.month as string | undefined) ?? localMonthStr();
+      if (body.scheduled === true) {
+        const sentRows = await db
+          .select({ d: auditLog.details })
+          .from(auditLog)
+          .where(and(eq(auditLog.action, "email_report"), eq(auditLog.username, "cron")));
+        const sent = new Set(sentRows.map((r) => r.d));
+        if (settings["report_last_month"]) sent.add(settings["report_last_month"]);
+        const chk = reportDue(new Date(), readSchedule(settings), (m) => sent.has(m));
+        if (!chk.due) return NextResponse.json({ skipped: true, reason: "Termin poročila še ni dosežen ali je za ta mesec že poslano" });
+        month = chk.month;
+      }
       const p = await loadMonth(month);
       const totals = monthTotals(p, month);
       const transporter = await buildTransport(cfg);
@@ -49,6 +67,7 @@ export async function POST(request: Request) {
         html: reportHtml(month, p.visibleCols, totals),
       });
       await logAction("cron", "email_report", month);
+      await saveSetting("report_last_month", month);
       return NextResponse.json({ success: true, type: "report", month });
     }
 

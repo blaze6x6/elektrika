@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Monitor, Palette } from "lucide-react";
 import { useTheme } from "./ThemeContext";
-import { THEMES, ThemeInfo } from "./themes";
+import { BarsPref, THEMES, ThemeInfo } from "./themes";
 import { usePopoverStyle } from "./popoverPos";
 
 function Group({ title, items }: { title: string; items: ThemeInfo[] }) {
@@ -33,7 +33,7 @@ function Group({ title, items }: { title: string; items: ThemeInfo[] }) {
 }
 
 export default function ThemeSwitcher({ className = "" }: { className?: string }) {
-  const { pref, setPref } = useTheme();
+  const { pref, setPref, bars, setBars } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const popStyle = usePopoverStyle(open, ref, 256);
@@ -79,6 +79,21 @@ export default function ThemeSwitcher({ className = "" }: { className?: string }
           </button>
           <Group title="Temne" items={THEMES.filter(t => !t.light)} />
           <Group title="Svetle" items={THEMES.filter(t => t.light)} />
+          <div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-gray-500">Sistemske vrstice telefona</div>
+          <div className="flex gap-1 p-1">
+            {([["theme", "Sledi temi"], ["light", "Svetle"], ["dark", "Temne"]] as [BarsPref, string][]).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                role="menuitemradio"
+                aria-checked={bars === v}
+                onClick={() => setBars(v)}
+                className={`flex-1 rounded px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 ${bars === v ? "ring-1 ring-blue-500" : ""}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

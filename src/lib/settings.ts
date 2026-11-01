@@ -16,6 +16,9 @@ export const EMAIL_SETTING_KEYS = [
   "smtp_from_name",
   "smtp_allow_selfsigned",
   "alert_threshold",
+  "report_day",
+  "report_hour",
+  "report_minute",
 ] as const;
 
 export const SECRET_SETTING_KEYS = ["smtp_pass", "se2_access", "se2_refresh"];

@@ -3,34 +3,17 @@
  * - NE predpomni API-jev ne strani z osebnimi podatki: vse, kar je za prijavo, gre vedno na omrežje.
  * - Predpomni samo statične, neodvisne datoteke (/_next/static, /icons, offline.html).
  * Ob spremembi te datoteke povišaj VERSION. */
-const VERSION = "v3";
+const VERSION = "v2";
 const CACHE = `strom-static-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 
-/* fetch z do 3 poskusi: prehodne omrežne napake (zastarela povezava, zbujanje Wi-Fi-ja)
- * ne smejo takoj pripeljati do offline strani. */
-async function fetchRetry(req) {
-  let lastError;
-  for (let i = 0; i < 3; i++) {
-    try {
-      return await fetch(req);
-    } catch (err) {
-      lastError = err;
-      if (i < 2) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
-    }
-  }
-  throw lastError;
-}
-
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    (async () => {
-      const cache = await caches.open(CACHE);
-      // allSettled: če en vir ni dosegljiv (npr. preusmeritev na prijavo), se SW vseeno namesti
-      await Promise.allSettled(PRECACHE.map((u) => cache.add(u)));
-      await self.skipWaiting();
-    })()
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(PRECACHE))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -49,19 +32,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigacija: vedno omrežje (z ponovnimi poskusi); če ga ni, prikaži stran "ni povezave".
+  // Navigacija: vedno omrežje; če ga ni, prikaži stran "ni povezave".
   if (req.mode === "navigate") {
     event.respondWith(
-      fetchRetry(req).catch(async () => {
-        const cached = await caches.match(OFFLINE_URL);
-        return (
-          cached ||
-          new Response("<h1>Ni povezave</h1>", {
-            status: 503,
-            headers: { "content-type": "text/html; charset=utf-8" },
-          })
-        );
-      })
+      fetch(req).catch(() => caches.match(OFFLINE_URL).then((r) => r || new Response("Ni povezave", { status: 503 })))
     );
     return;
   }
@@ -72,7 +46,7 @@ self.addEventListener("fetch", (event) => {
       caches.match(req).then(
         (hit) =>
           hit ||
-          fetchRetry(req).then((res) => {
+          fetch(req).then((res) => {
             if (res.ok) {
               const copy = res.clone();
               caches.open(CACHE).then((c) => c.put(req, copy));

@@ -30,6 +30,14 @@ function validateSetting(key: string, value: string): string | null {
       }
       return null;
     }
+    case "report_day":
+    case "report_hour":
+    case "report_minute": {
+      const max = key === "report_day" ? 28 : key === "report_hour" ? 23 : 59;
+      const min = key === "report_day" ? 1 : 0;
+      const n = Number(value);
+      return value === "" || (Number.isInteger(n) && n >= min && n <= max) ? null : `${key}: pričakovano celo število ${min}–${max}`;
+    }
     case "alert_threshold": {
       const n = Number(value.replace(",", "."));
       return value === "" || (Number.isFinite(n) && n >= 0 && n < 100000) ? null : "alert_threshold: neveljavno število";

@@ -29,6 +29,7 @@ export default function EmailAdmin() {
     "smtp_from", "smtp_from_name",
     "smtp_allow_selfsigned",
     "alert_threshold",
+    "report_day", "report_hour", "report_minute",
   ];
 
   const handleSave = async () => {
@@ -94,13 +95,35 @@ export default function EmailAdmin() {
           <label className="flex items-center justify-between gap-4 cursor-pointer">
             <div>
               <div className="font-medium text-sm">📧 Mesečno poročilo</div>
-              <div className="text-xs text-gray-400">Pošlje povzetek 1. v mesecu za pretekli mesec</div>
+              <div className="text-xs text-gray-400">Pošlje povzetek za pretekli mesec ob nastavljenem terminu</div>
             </div>
             <input type="checkbox"
               checked={settings.email_enabled === "true"}
               onChange={e => update("email_enabled", e.target.checked ? "true" : "false")}
               className="w-5 h-5 accent-green-500" />
           </label>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Termin pošiljanja poročila (lokalni čas)</label>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-400">vsakega</span>
+              <input type="number" min={1} max={28} value={settings.report_day || "1"}
+                onChange={e => update("report_day", e.target.value)}
+                className="w-16 bg-gray-700 px-2 py-2 rounded text-sm" aria-label="Dan v mesecu" />
+              <span className="text-gray-400">. v mesecu ob</span>
+              <input type="number" min={0} max={23} value={settings.report_hour ?? "4"}
+                onChange={e => update("report_hour", e.target.value)}
+                className="w-16 bg-gray-700 px-2 py-2 rounded text-sm" aria-label="Ura" />
+              <span className="text-gray-400">:</span>
+              <input type="number" min={0} max={59} value={settings.report_minute ?? "0"}
+                onChange={e => update("report_minute", e.target.value)}
+                className="w-16 bg-gray-700 px-2 py-2 rounded text-sm" aria-label="Minuta" />
+            </div>
+            <div className="text-[11px] text-gray-500 mt-1">
+              Dan 1–28. Poročilo je vedno za prejšnji mesec, pošlje se enkrat. Sinhronizacija prejšnjega meseca teče ob 4:00 1. in 2. v mesecu –
+              če želiš dokončne podatke, izberi termin po njej (npr. 1. ob 10:00 ali 2. ob 6:00). Preverjanje teče na vsakih 10 minut.
+            </div>
+          </div>
 
           <label className="flex items-center justify-between gap-4 cursor-pointer">
             <div>
@@ -265,7 +288,7 @@ export default function EmailAdmin() {
         <div className="bg-gray-800/50 rounded-lg p-4 text-xs text-gray-500 space-y-1">
           <p className="font-semibold text-gray-400">ℹ️ Namig za prikaz napak:</p>
           <p>Testno poročilo ne preveri, ali so poročila vklopljena – pošlje ga vedno, da lažje preverite nastavitve.</p>
-          <p>Mesečno poročilo se avtomatsko pošlje <strong className="text-gray-300">1. v mesecu</strong> za pretekli mesec.</p>
+          <p>Mesečno poročilo se avtomatsko pošlje ob <strong className="text-gray-300">nastavljenem terminu</strong> za pretekli mesec.</p>
           <p>Opozorila se preverjajo <strong className="text-gray-300">vsak dan ob 4:00</strong>.</p>
         </div>
 

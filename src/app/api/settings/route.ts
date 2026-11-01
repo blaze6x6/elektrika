@@ -19,7 +19,7 @@ function validateSetting(key: string, value: string): string | null {
       return null;
     }
     case "smtp_security":
-      return ["ssl", "starttls", "none"].includes(value) ? null : "smtp_security: ssl | starttls | none";
+      return value === "" || ["ssl", "starttls", "none"].includes(value) ? null : "smtp_security: ssl | starttls | none";
     case "smtp_host":
       return value === "" || isValidHostname(value) ? null : "smtp_host: neveljavno ime strežnika";
     case "email_to": {

@@ -36,6 +36,9 @@ export default function EmailAdmin() {
     setSaving(true);
     const payload: Record<string, string> = {};
     for (const key of ALL_KEYS) payload[key] = settings[key] || "";
+    // privzete vrednosti, ki jih obrazec prikazuje, a jih nikoli niste shranili
+    if (!payload.smtp_security) payload.smtp_security = "starttls";
+    if (!payload.smtp_port) payload.smtp_port = "587";
     // prazno geslo = "ne spreminjaj" (strežnik ga ne vrača nazaj)
     const res = await fetch("/api/settings", {
       method: "POST",

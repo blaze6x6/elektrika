@@ -10,7 +10,7 @@ import { db } from "@/db";
 import { auditLog } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { saveSetting } from "@/lib/settings";
-import { readSchedule, reportDue } from "@/lib/report-schedule";
+import { presyncDue, readSchedule, reportDue } from "@/lib/report-schedule";
 
 /**
  * Samo za cron (glava x-cron-secret) – skrivnost v telesu ni več sprejeta.
@@ -53,7 +53,16 @@ export async function POST(request: Request) {
           .where(and(eq(auditLog.action, "email_report"), eq(auditLog.username, "cron")));
         const sent = new Set(sentRows.map((r) => r.d));
         if (settings["report_last_month"]) sent.add(settings["report_last_month"]);
-        const chk = reportDue(new Date(), readSchedule(settings), (m) => sent.has(m));
+        const now = new Date();
+        const sch = readSchedule(settings);
+        // 1 h pred terminom: cron najprej še enkrat sinhronizira prejšnji mesec (odgovor { presync: "YYYY-MM" })
+        const pre = presyncDue(now, sch, (m) => sent.has(m), (m) => settings["report_presync_month"] === m);
+        if (pre.due) {
+          await saveSetting("report_presync_month", pre.month);
+          await logAction("cron", "report_presync", pre.month);
+          return NextResponse.json({ presync: pre.month });
+        }
+        const chk = reportDue(now, sch, (m) => sent.has(m));
         if (!chk.due) return NextResponse.json({ skipped: true, reason: "Termin poročila še ni dosežen ali je za ta mesec že poslano" });
         month = chk.month;
       }

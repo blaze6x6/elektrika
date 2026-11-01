@@ -30,3 +30,20 @@ export function reportDue(now: Date, sch: ReportSchedule, alreadySentFor: (month
   const at = new Date(now.getFullYear(), now.getMonth(), sch.day, sch.hour, sch.minute, 0, 0);
   return { due: now.getTime() >= at.getTime() && !alreadySentFor(month), month };
 }
+
+/**
+ * Ali je treba pred poročilom (od 1 h pred terminom naprej) še enkrat sinhronizirati prejšnji mesec?
+ * Velja le, če poročilo še ni poslano in predsinhronizacija za ta mesec še ni bila zagnana.
+ */
+export function presyncDue(
+  now: Date,
+  sch: ReportSchedule,
+  alreadySentFor: (month: string) => boolean,
+  alreadyPresynced: (month: string) => boolean,
+): { due: boolean; month: string } {
+  const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const month = previousMonth(cur);
+  const at = new Date(now.getFullYear(), now.getMonth(), sch.day, sch.hour, sch.minute, 0, 0);
+  const from = at.getTime() - 3_600_000;
+  return { due: now.getTime() >= from && !alreadySentFor(month) && !alreadyPresynced(month), month };
+}

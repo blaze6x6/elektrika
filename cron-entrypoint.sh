@@ -15,6 +15,9 @@ if ! echo "${SYNC_SCHEDULE}" | grep -Eq '^[0-9*/,-]+( [0-9*/,-]+){4}$'; then
 fi
 
 # Izpis gre na stdout glavnega procesa -> viden z `docker compose logs cron`
-echo "${SYNC_SCHEDULE} /app/cron-sync.sh > /proc/1/fd/1 2>&1" > /etc/crontabs/root
+{
+  echo "${SYNC_SCHEDULE} /app/cron-sync.sh > /proc/1/fd/1 2>&1"
+  echo "*/10 * * * * /app/cron-report.sh > /proc/1/fd/1 2>&1"
+} > /etc/crontabs/root
 echo "⏰ Cron zagnan: '${SYNC_SCHEDULE}' (${TZ})"
 exec crond -f -l 6

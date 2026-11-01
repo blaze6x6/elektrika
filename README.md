@@ -99,7 +99,8 @@ Za zaščito pred ugibanjem gesel poleg vgrajene omejitve (10 napačnih poskusov
 
 Vsak dan ob 4:00 (`SYNC_SCHEDULE`, časovni pas `TZ`): sinhronizacija tekočega meseca (SolarEdge, MELCloud, MojElektro),
 **1. in 2. v mesecu tudi prejšnjega meseca** (da dobi zadnji dan končne vrednosti), preverjanje opozorila za včerajšnji dan
-in 1. v mesecu mesečno poročilo. Izpis: `docker compose logs cron`. Ob napaki skripta vrne kodo ≠ 0.
+in (ločeno, na vsakih 10 min) preverjanje, ali je zapadel termin mesečnega poročila
+(Administracija → E-mail: dan 1–28, ura, minuta; poročilo je za prejšnji mesec in se pošlje enkrat). Izpis: `docker compose logs cron`. Ob napaki skripta vrne kodo ≠ 0.
 
 ## 💾 Varnostne kopije
 

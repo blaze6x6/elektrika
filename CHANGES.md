@@ -160,3 +160,14 @@ V1 preneha delovati 3. 11. 2026. Ta različica doda prijavo za v2 (sinhronizacij
 - Varčevanje s krediti (v2): dnevni odgovor se predpomni (15 min za tekoči mesec, 6 h za pretekle); urni podatki se prenesejo samo za dneve, ki jih še nimamo ali so bili preneseni pred koncem dneva; današnji dan se po urah ne prenaša. Običajna sinhronizacija = 1–2 kredita, ponovna ročna sinhronizacija znotraj 15 min = 0. Rezultat sinhronizacije izpiše porabljene kredite.
 - v2 za merilnik samo z uvozom/izvozom (npr. 20120085): proizvodnja se vzame iz `/inverters/telemetry` (vsota inverterjev, `energy`), poraba = proizvodnja + uvoz − izvoz, samooskrba = proizvodnja − izvoz. Če merilnik sam poroča proizvodnjo/porabo, inverterji niso potrebni. Urni klici: 2 kredita na dan; privzeto največ 3 dni na sinhronizacijo (`SOLAREDGE_V2_HOURLY_PER_RUN=3`).
 - Proizvodnja v2: če merilnik ne poroča proizvodnje, se uporabi `/sites/{id}/energy` (izračunana PV proizvodnja elektrarne, isti vir kot v1; HOUR do 24 h, DAY do 1 mesec); rezerva je vsota `/inverters/telemetry`. Neveljavne vrednosti (npr. −3,4e38) se zavržejo.
+- Odstranjena vrstica »Sonce / Hiša / Omrežje« (live podatki) z nadzorne plošče in pot `/api/solaredge/live` – aplikacija je namenjena statistiki; v1 `currentPowerFlow` preneha delovati 3. 11. 2026, v2 Live Power Flow je samo v naprednem paketu.
+- v2 urni podatki: 25-urni dan (prehod na zimski čas, 25. 10. 2026) – zadnja ura dneva se prenese v dodatnem oknu (+1 kredit) in dvakratna ura 02 se ne izgubi (točke so ločene po času začetka intervala).
+
+## Sistemske vrstice telefona (theme-color)
+- Nova izbira v izbirniku tem: »Sistemske vrstice telefona« – Sledi temi / Svetle / Temne (localStorage `bars`).
+- Datoteke: `src/lib/themes.ts`, `src/lib/ThemeContext.tsx`, `src/lib/ThemeSwitcher.tsx`.
+
+## Termin mesečnega poročila
+- Administracija → E-mail: dan (1–28), ura in minuta pošiljanja (privzeto 1. ob 4:00). Ključi `report_day|hour|minute`.
+- Cron: nov `cron-report.sh` na vsakih 10 min kliče `/api/email/send` z `scheduled:true`; aplikacija pošlje, ko je termin dosežen in poročilo za ta mesec še ni poslano (`report_last_month` + audit log). `cron-sync.sh` poročila ne pošilja več.
+- Zahteva ponovno gradnjo cron slike (Dockerfile.cron, cron-entrypoint.sh, cron-report.sh).

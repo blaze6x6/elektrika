@@ -4,7 +4,7 @@
 #  1. sinhronizira tekoči mesec (SolarEdge, MELCloud, MojElektro)
 #  2. 1. in 2. v mesecu sinhronizira tudi PREJŠNJI mesec (končni podatki zadnjega dne)
 #  3. preveri opozorilo za včerajšnji dan
-#  4. 1. v mesecu pošlje mesečno poročilo za prejšnji mesec
+#  (mesečno poročilo ima svoj termin – cron-report.sh, nastavljivo v Administracija → E-mail)
 # Skripta vrne izhodno kodo 1, če je katerikoli klic spodletel.
 # ──────────────────────────────────────────────
 set -u
@@ -56,12 +56,6 @@ for M in ${MONTHS}; do
 done
 
 call /api/email/send '{"type":"alert"}'
-
-if [ "${DAY}" = "01" ]; then
-  PREV_MONTH=$(date -d "@$(( $(date +%s) - 5 * 86400 ))" '+%Y-%m')
-  log "Pošiljam mesečno poročilo za ${PREV_MONTH}..."
-  call /api/email/send "{\"type\":\"report\",\"month\":\"${PREV_MONTH}\"}"
-fi
 
 if [ "${FAILED}" -ne 0 ]; then
   log "=== Končano Z NAPAKAMI ==="

@@ -171,3 +171,11 @@ V1 preneha delovati 3. 11. 2026. Ta različica doda prijavo za v2 (sinhronizacij
 - Administracija → E-mail: dan (1–28), ura in minuta pošiljanja (privzeto 1. ob 4:00). Ključi `report_day|hour|minute`.
 - Cron: nov `cron-report.sh` na vsakih 10 min kliče `/api/email/send` z `scheduled:true`; aplikacija pošlje, ko je termin dosežen in poročilo za ta mesec še ni poslano (`report_last_month` + audit log). `cron-sync.sh` poročila ne pošilja več.
 - Zahteva ponovno gradnjo cron slike (Dockerfile.cron, cron-entrypoint.sh, cron-report.sh).
+
+## Sinhronizacija pred poročilom
+- Od 1 h pred terminom poročila cron (`cron-report.sh`) enkrat sinhronizira celoten prejšnji mesec (SolarEdge, MojElektro); poročilo se pošlje ob terminu. `presyncDue` v `src/lib/report-schedule.ts`, oznaka `report_presync_month`.
+
+## MojElektro zamik
+- cron-sync.sh: MojElektro prejšnjega meseca se dopolnjuje vsak dan do 10. v mesecu (SolarEdge še 1. in 2.), ker podatki zamujajo nekaj dni.
+
+- `REPORT_PRESYNC=mojelektro` v .env: predsinhronizacija pred poročilom samo za MojElektro (privzeto all).

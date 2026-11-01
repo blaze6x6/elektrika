@@ -86,6 +86,7 @@ services:
       - CRON_SECRET=${CRON_SECRET:?Nastavi CRON_SECRET v .env}
       - SYNC_SCHEDULE=${SYNC_SCHEDULE:-0 4 * * *}
       - TZ=${TZ:-Europe/Ljubljana}
+      - REPORT_PRESYNC=${REPORT_PRESYNC:-all}
     depends_on:
       web:
         condition: service_healthy

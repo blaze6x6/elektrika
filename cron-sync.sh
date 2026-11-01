@@ -2,7 +2,7 @@
 # ──────────────────────────────────────────────
 # Štrom poraba – dnevna sinhronizacija
 #  1. sinhronizira tekoči mesec (SolarEdge, MELCloud, MojElektro)
-#  2. 1. in 2. v mesecu sinhronizira tudi PREJŠNJI mesec (končni podatki zadnjega dne)
+#  2. 1. in 2. v mesecu sinhronizira tudi PREJŠNJI mesec (končni podatki zadnjega dne); MojElektro prejšnjega meseca do 10. (zamik podatkov)
 #  3. preveri opozorilo za včerajšnji dan
 #  (mesečno poročilo ima svoj termin – cron-report.sh, nastavljivo v Administracija → E-mail)
 # Skripta vrne izhodno kodo 1, če je katerikoli klic spodletel.
@@ -40,20 +40,26 @@ call() {
 MONTH=$(date '+%Y-%m')
 DAY=$(date '+%d')
 MONTHS="${MONTH}"
+PREV_MONTH=$(date -d "@$(( $(date +%s) - 12 * 86400 ))" '+%Y-%m')
 
-# 5 dni nazaj od 1. ali 2. v mesecu je vedno v prejšnjem mesecu
-if [ "${DAY}" -le 2 ]; then
-  PREV_MONTH=$(date -d "@$(( $(date +%s) - 5 * 86400 ))" '+%Y-%m')
-  MONTHS="${PREV_MONTH} ${MONTH}"
+# SolarEdge: prejšnji mesec še 1. in 2. v mesecu (zadnji dan dobi končne vrednosti)
+# MojElektro: podatki zamujajo nekaj dni → prejšnji mesec dopolnjujemo do 10. v mesecu
+SYNC_PREV_ALL=0
+SYNC_PREV_MOJ=0
+[ "${DAY}" -le 2 ] && SYNC_PREV_ALL=1
+[ "${DAY}" -le 10 ] && SYNC_PREV_MOJ=1
+
+log "=== Dnevna sinhronizacija (${MONTH}$([ "${SYNC_PREV_MOJ}" = 1 ] && echo " + MojElektro ${PREV_MONTH}")) ==="
+
+if [ "${SYNC_PREV_ALL}" = 1 ]; then
+  call /api/sync "{\"month\":\"${PREV_MONTH}\"}"
 fi
-
-log "=== Dnevna sinhronizacija (${MONTHS}) ==="
-
-for M in ${MONTHS}; do
-  call /api/sync "{\"month\":\"${M}\"}"
-  call /api/sync/mojelektro "{\"month\":\"${M}\"}"
-  sleep 2
-done
+if [ "${SYNC_PREV_MOJ}" = 1 ]; then
+  call /api/sync/mojelektro "{\"month\":\"${PREV_MONTH}\"}"
+fi
+call /api/sync "{\"month\":\"${MONTH}\"}"
+call /api/sync/mojelektro "{\"month\":\"${MONTH}\"}"
+sleep 2
 
 call /api/email/send '{"type":"alert"}'
 

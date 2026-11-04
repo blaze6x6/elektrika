@@ -14,6 +14,14 @@
  * | 20–21        | 2              | 3              | 3                 | 4                 |
  * | 22–23        | 3              | 4              | 4                 | 5                 |
  */
+/** Število iz JSON števila ali niza s piko/vejico (»1,25« se ne odreže na 1). */
+function toNumberLoose(v: unknown): number {
+  if (typeof v === "number") return v;
+  if (typeof v !== "string") return NaN;
+  const s = v.replace(/\s/g, "");
+  return /^[+-]?\d*[.,]?\d+$/.test(s) ? Number(s.replace(",", ".")) : NaN;
+}
+
 
 export type Block = 1 | 2 | 3 | 4 | 5;
 
@@ -228,7 +236,7 @@ export function aggregateMeIntervals(
     if (!isImport && b.readingType !== exportType) continue;
     for (const r of b.intervalReadings ?? []) {
       const ts = String(r.timestamp ?? r.d ?? r.date ?? "");
-      const val = parseFloat(String(r.value ?? r.v ?? ""));
+      const val = toNumberLoose(r.value ?? r.v);
       if (!ts || !Number.isFinite(val)) continue;
       const loc = localIntervalStart(ts, 15, stamp);
       if (!loc) continue;

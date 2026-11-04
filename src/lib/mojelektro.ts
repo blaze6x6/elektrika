@@ -4,6 +4,7 @@
  */
 
 import { fetchT } from "@/lib/http";
+import { toNumberLoose } from "@/lib/validate";
 import { aggregateMeIntervals, type MeDay, type MeIntervalBlock } from "@/lib/blocks";
 
 const BASE_URL = "https://api.informatika.si/mojelektro/v1";
@@ -144,7 +145,7 @@ export function extractContractedPower(data: unknown): Record<string, number> | 
   const out: Record<string, number> = {};
   const raw = [active.casovniBlok1, active.casovniBlok2, active.casovniBlok3, active.casovniBlok4, active.casovniBlok5];
   raw.forEach((v, i) => {
-    const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+    const n = toNumberLoose(v);
     if (Number.isFinite(n) && n > 0) out[`moc_blok${i + 1}`] = n;
   });
   return Object.keys(out).length ? out : null;

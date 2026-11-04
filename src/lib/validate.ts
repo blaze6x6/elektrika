@@ -99,6 +99,13 @@ export function parseLocaleNumber(input: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Število iz zunanjega vira (JSON število ali niz s piko/vejico) – brez tihega odrezanja pri »1,25«. */
+export function toNumberLoose(v: unknown): number {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") return parseLocaleNumber(v) ?? NaN;
+  return NaN;
+}
+
 /** Sprejme število ali številski niz; zavrne NaN/Infinity/prevelike vrednosti. */
 export function toFiniteNumber(v: unknown, max = 1e9): number | null {
   let n: number | null = null;

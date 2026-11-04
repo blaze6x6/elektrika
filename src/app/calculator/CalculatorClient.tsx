@@ -9,6 +9,7 @@ import Link from "next/link";
 import BlockTimeline from "./BlockTimeline";
 import { buildFormulaMap, evaluateFormula } from "@/lib/formula";
 import { DEFAULT_TARIFF } from "@/lib/tariff";
+import { parseLocaleNumber } from "@/lib/validate";
 import { activeBlocksForMonth, blocksOccurringOn, isHighSeasonMonth, solarBlockShares, type Block } from "@/lib/blocks";
 
 type ColumnConfig = { id: number; key: string; label: string; displayOrder: number; sourceType: string; formula: string | null; unit: string | null; editable: boolean; visible: boolean };
@@ -20,6 +21,7 @@ export default function CalculatorClient() {
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [monthData, setMonthData] = useState<DailyRow[]>([]);
   const [tariff, setTariff] = useState<Tariff>({});
+  const [tariffDraft, setTariffDraft] = useState<Record<string, string>>({}); // besedilo, ki ga uporabnik tipka (da se »0,« ne pretvori v 0)
   const [tariffSource, setTariffSource] = useState<{ kind: string; fromYear?: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showTariff, setShowTariff] = useState(false);
@@ -46,6 +48,7 @@ export default function CalculatorClient() {
     setMonthData((await dataRes.json()).data || []);
     const tj = await tarRes.json();
     setTariff(tj.tariff || {});
+    setTariffDraft({});
     setTariffSource(tj.source ?? null);
     setLoading(false);
   }, [monthKey]);
@@ -251,9 +254,14 @@ export default function CalculatorClient() {
     fetchAll();
   };
 
+  // Slovenska vejica ali pika; besedilo hranimo posebej, število posodobimo samo, če je veljavno.
   const updateTariff = (key: string, val: string) => {
-    setTariff(prev => ({ ...prev, [key]: parseFloat(val.replace(",", ".")) || 0 }));
+    setTariffDraft(prev => ({ ...prev, [key]: val }));
+    const n = parseLocaleNumber(val);
+    setTariff(prev => ({ ...prev, [key]: n ?? (val.trim() === "" || /^[-+]?[.,]?$/.test(val.trim()) ? 0 : prev[key] ?? 0) }));
   };
+  const tariffText = (key: string, fallback: number): string =>
+    tariffDraft[key] ?? String(tariff[key] ?? fallback).replace(".", ",");
 
   type LineItem = { label: string; value: number; bold?: boolean; color?: string; sub?: boolean };
 
@@ -546,7 +554,7 @@ export default function CalculatorClient() {
                 {[1,2,3,4,5].map(b => (
                   <div key={`moc_${b}`}>
                     <label className="block text-[8px] text-gray-400 mb-0.5 text-center">Blok {b}</label>
-                    <input type="text" inputMode="decimal" value={String(tariff[`moc_blok${b}`] ?? 7.2)} onChange={e => updateTariff(`moc_blok${b}`, e.target.value)} className="w-full bg-gray-700 px-1 py-1 rounded text-[10px] text-center" />
+                    <input type="text" inputMode="decimal" value={tariffText(`moc_blok${b}`, 7.2)} onChange={e => updateTariff(`moc_blok${b}`, e.target.value)} className="w-full bg-gray-700 px-1 py-1 rounded text-[10px] text-center" />
                   </div>
                 ))}
               </div>
@@ -558,7 +566,7 @@ export default function CalculatorClient() {
                 {[1,2,3,4,5].map(b => (
                   <div key={`cena_${b}`}>
                     <label className="block text-[8px] text-gray-400 mb-0.5 text-center">Blok {b}</label>
-                    <input type="text" inputMode="decimal" value={String(tariff[`cena_moc_blok${b}`] ?? 0)} onChange={e => updateTariff(`cena_moc_blok${b}`, e.target.value)} className="w-full bg-gray-700 px-1 py-1 rounded text-[10px] text-center" />
+                    <input type="text" inputMode="decimal" value={tariffText(`cena_moc_blok${b}`, 0)} onChange={e => updateTariff(`cena_moc_blok${b}`, e.target.value)} className="w-full bg-gray-700 px-1 py-1 rounded text-[10px] text-center" />
                   </div>
                 ))}
               </div>
@@ -570,7 +578,7 @@ export default function CalculatorClient() {
                 {[1,2,3,4,5].map(b => (
                   <div key={`cena_e_${b}`}>
                     <label className="block text-[8px] text-gray-400 mb-0.5 text-center">Blok {b}</label>
-                    <input type="text" inputMode="decimal" value={String(tariff[`cena_omreznina_blok${b}`] ?? 0)} onChange={e => updateTariff(`cena_omreznina_blok${b}`, e.target.value)} className="w-full bg-gray-700 px-1 py-1 rounded text-[10px] text-center" />
+                    <input type="text" inputMode="decimal" value={tariffText(`cena_omreznina_blok${b}`, 0)} onChange={e => updateTariff(`cena_omreznina_blok${b}`, e.target.value)} className="w-full bg-gray-700 px-1 py-1 rounded text-[10px] text-center" />
                   </div>
                 ))}
               </div>
@@ -592,7 +600,7 @@ export default function CalculatorClient() {
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={String(tariff[key] ?? "")}
+                    value={tariffText(key, 0)}
                     onChange={e => updateTariff(key, e.target.value)}
                     className="w-full bg-gray-700 px-2 py-1 rounded text-xs text-white"
                   />

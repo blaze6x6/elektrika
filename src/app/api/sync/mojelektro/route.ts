@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { appSettings } from "@/db/schema";
+import { tariffKey } from "@/lib/tariff";
 import { requireAdmin, requireCronOrUser } from "@/lib/guard";
 import { logAction } from "@/lib/audit";
 import { badRequest, readJson } from "@/lib/http";
@@ -85,12 +86,12 @@ export async function POST(request: Request) {
     if (gsrn) {
       const powers = extractContractedPower(await fetchMerilnaTocka(token, gsrn));
       if (powers) {
-        const rows = Object.entries(powers).map(([k, v]) => ({ key: `tariff_${k}`, value: String(v) }));
+        const rows = Object.entries(powers).map(([k, v]) => ({ key: tariffKey(new Date().getFullYear(), k), value: String(v) })); // dogovorjena moč velja za tekoče leto
         await db
           .insert(appSettings)
           .values(rows)
           .onConflictDoUpdate({ target: appSettings.key, set: { value: sql`excluded.value` } });
-        results.push(`✅ MojElektro: Posodobljene dogovorjene moči (${Object.keys(powers).length} blokov)`);
+        results.push(`✅ MojElektro: Posodobljene dogovorjene moči za ${new Date().getFullYear()} (${Object.keys(powers).length} blokov)`);
       }
     }
   } catch (err) {

@@ -20,6 +20,7 @@ export default function CalculatorClient() {
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [monthData, setMonthData] = useState<DailyRow[]>([]);
   const [tariff, setTariff] = useState<Tariff>({});
+  const [tariffSource, setTariffSource] = useState<{ kind: string; fromYear?: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showTariff, setShowTariff] = useState(false);
   const [rezim, setRezimState] = useState<"letno" | "bloki">("letno");
@@ -39,11 +40,13 @@ export default function CalculatorClient() {
     const [colRes, dataRes, tarRes] = await Promise.all([
       fetch("/api/columns"),
       fetch(`/api/data?month=${monthKey}`),
-      fetch("/api/tariff"),
+      fetch(`/api/tariff?year=${monthKey.slice(0, 4)}`),
     ]);
     setColumns((await colRes.json()).columns || []);
     setMonthData((await dataRes.json()).data || []);
-    setTariff((await tarRes.json()).tariff || {});
+    const tj = await tarRes.json();
+    setTariff(tj.tariff || {});
+    setTariffSource(tj.source ?? null);
     setLoading(false);
   }, [monthKey]);
 
@@ -237,7 +240,7 @@ export default function CalculatorClient() {
     const res = await fetch("/api/tariff", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tariff: payload }),
+      body: JSON.stringify({ year: Number(monthKey.slice(0, 4)), tariff: payload }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -245,6 +248,7 @@ export default function CalculatorClient() {
       return;
     }
     setShowTariff(false);
+    fetchAll();
   };
 
   const updateTariff = (key: string, val: string) => {
@@ -522,7 +526,15 @@ export default function CalculatorClient() {
         {/* Tariff settings modal */}
         {showTariff && (
           <div className="bg-gray-800 rounded-xl p-4 space-y-3 border border-gray-600 max-h-[80vh] overflow-y-auto">
-            <h3 className="font-bold text-sm">⚙️ Nastavitve tarife</h3>
+            <h3 className="font-bold text-sm">⚙️ Nastavitve tarife za leto {monthKey.slice(0, 4)}</h3>
+            <p className="text-[10px] text-gray-400">
+              {tariffSource?.kind === "year"
+                ? `Za leto ${monthKey.slice(0, 4)} so tarife shranjene.`
+                : tariffSource?.kind === "inherited"
+                  ? `Za leto ${monthKey.slice(0, 4)} še ni lastnih tarif – prikazane so vrednosti iz leta ${tariffSource.fromYear}. Ko shraniš, postanejo tarife za leto ${monthKey.slice(0, 4)}.`
+                  : `Za leto ${monthKey.slice(0, 4)} še ni lastnih tarif (splošne/privzete vrednosti). Ko shraniš, postanejo tarife za to leto.`}
+              {" "}Spremembe veljajo samo za mesece tega leta; za drugo leto zamenjaj mesec v kalkulatorju.
+            </p>
             <p className="text-[10px] text-gray-500">Omrežnina se obračunava glede na sezono (Višja: nov-feb, Nižja: mar-okt).</p>
             
             <div className="bg-gray-900 p-2 rounded">

@@ -63,3 +63,50 @@ export function sanitizeTariff(
   }
   return { ok: true, values };
 }
+
+// ───────── tarife po letih ─────────
+// Shranjevanje: app_settings ključ `tariff_y<LETO>_<ključ>` (npr. tariff_y2026_cena_energija_et).
+// Stari (splošni) ključi `tariff_<ključ>` ostanejo kot rezerva za leta brez lastnih vrednosti.
+
+export const tariffKey = (year: number, key: string) => `tariff_y${year}_${key}`;
+
+export type TariffSource = { kind: "year" } | { kind: "inherited"; fromYear: number } | { kind: "legacy" } | { kind: "default" };
+
+const num = (raw: string | undefined): number | null => {
+  if (raw === undefined || raw === "") return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Leta, za katera obstaja vsaj ena shranjena vrednost tarife. */
+export function tariffYears(settings: Record<string, string>): number[] {
+  const ys = new Set<number>();
+  for (const k of Object.keys(settings)) {
+    const m = /^tariff_y(\d{4})_/.exec(k);
+    if (m && settings[k] !== "") ys.add(Number(m[1]));
+  }
+  return [...ys].sort((a, b) => a - b);
+}
+
+/**
+ * Tarifa za leto: 1) lastne vrednosti tega leta, 2) najbližje PREJŠNJE leto z vrednostmi (cene se običajno prenesejo),
+ * 3) stari splošni ključi, 4) privzete vrednosti. Posamezen manjkajoči ključ se dopolni po istem vrstnem redu.
+ */
+export function resolveTariff(settings: Record<string, string>, year: number): { values: Record<string, number>; source: TariffSource } {
+  const years = tariffYears(settings);
+  const own = years.includes(year);
+  const prev = [...years].filter((y) => y < year).pop();
+  const order = [...(own ? [year] : []), ...years.filter((y) => y < year).reverse()];
+  const values: Record<string, number> = {};
+  for (const [key, def] of Object.entries(DEFAULT_TARIFF)) {
+    let v: number | null = null;
+    for (const y of order) {
+      v = num(settings[tariffKey(y, key)]);
+      if (v !== null) break;
+    }
+    if (v === null) v = num(settings[`tariff_${key}`]);
+    values[key] = v ?? def;
+  }
+  const source: TariffSource = own ? { kind: "year" } : prev !== undefined ? { kind: "inherited", fromYear: prev } : Object.keys(settings).some((k) => k.startsWith("tariff_") && !/^tariff_y\d{4}_/.test(k)) ? { kind: "legacy" } : { kind: "default" };
+  return { values, source };
+}

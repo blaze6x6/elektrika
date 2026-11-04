@@ -185,3 +185,7 @@ V1 preneha delovati 3. 11. 2026. Ta različica doda prijavo za v2 (sinhronizacij
 - Kalkulator uporabi tarifo leta prikazanega meseca. Če leto nima lastnih vrednosti, se prenesejo iz najbližjega prejšnjega leta, sicer iz starih splošnih ključev (`tariff_<ključ>`), sicer privzete. Ob prvem shranjevanju v novem letu nastane lastna tarifa.
 - `GET /api/tariff?year=YYYY`, `POST /api/tariff { year, tariff }`. MojElektro sinhronizacija zapiše dogovorjeno moč v tekoče leto.
 - Datoteke: `src/lib/tariff.ts`, `src/app/api/tariff/route.ts`, `src/app/api/sync/mojelektro/route.ts`, `src/app/calculator/CalculatorClient.tsx`, `tests/tariff-years.test.ts`.
+
+## Letni poračun (kalkulator)
+- Nova stran Kalkulator → Letni poračun (`/calculator/yearly`): za izbrano leto prikaže neto (uvoz A+ − oddaja A−), »preveč porabljeno« energijo in strošek po tarifi tistega leta (energija, omrežnina uteženo po blokih, prispevki, trošarina, DDV). Vrednosti iz baze so ročno spremenljive; simulacija (±kWh uvoza/oddaje, drugačne cene, odkup presežka) in pregled po mesecih.
+- Datoteke: `src/lib/netting.ts`, `src/app/calculator/yearly/{page,YearlyClient}.tsx`, povezava v `CalculatorClient.tsx`, `tests/netting.test.ts`.

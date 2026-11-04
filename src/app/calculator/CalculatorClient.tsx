@@ -283,6 +283,9 @@ export default function CalculatorClient() {
           <h1 className="text-lg font-bold flex items-center gap-2"><Calculator size={20} /> Kalkulator</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/calculator/yearly" className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs">
+            Letni poračun
+          </Link>
           <button onClick={() => setShowTariff(!showTariff)} className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs">
             <Settings size={14} /> Tarife
           </button>

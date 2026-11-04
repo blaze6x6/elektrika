@@ -179,3 +179,9 @@ V1 preneha delovati 3. 11. 2026. Ta različica doda prijavo za v2 (sinhronizacij
 - cron-sync.sh: MojElektro prejšnjega meseca se dopolnjuje vsak dan do 10. v mesecu (SolarEdge še 1. in 2.), ker podatki zamujajo nekaj dni.
 
 - `REPORT_PRESYNC=mojelektro` v .env: predsinhronizacija pred poročilom samo za MojElektro (privzeto all).
+
+## Tarife po letih
+- Tarife (cene, dogovorjena moč …) se shranjujejo za vsako leto posebej: ključ `tariff_y<LETO>_<ključ>` v app_settings.
+- Kalkulator uporabi tarifo leta prikazanega meseca. Če leto nima lastnih vrednosti, se prenesejo iz najbližjega prejšnjega leta, sicer iz starih splošnih ključev (`tariff_<ključ>`), sicer privzete. Ob prvem shranjevanju v novem letu nastane lastna tarifa.
+- `GET /api/tariff?year=YYYY`, `POST /api/tariff { year, tariff }`. MojElektro sinhronizacija zapiše dogovorjeno moč v tekoče leto.
+- Datoteke: `src/lib/tariff.ts`, `src/app/api/tariff/route.ts`, `src/app/api/sync/mojelektro/route.ts`, `src/app/calculator/CalculatorClient.tsx`, `tests/tariff-years.test.ts`.

@@ -189,3 +189,7 @@ V1 preneha delovati 3. 11. 2026. Ta različica doda prijavo za v2 (sinhronizacij
 ## Letni poračun (kalkulator)
 - Nova stran Kalkulator → Letni poračun (`/calculator/yearly`): za izbrano leto prikaže neto (uvoz A+ − oddaja A−), »preveč porabljeno« energijo in strošek po tarifi tistega leta (energija, omrežnina uteženo po blokih, prispevki, trošarina, DDV). Vrednosti iz baze so ročno spremenljive; simulacija (±kWh uvoza/oddaje, drugačne cene, odkup presežka) in pregled po mesecih.
 - Datoteke: `src/lib/netting.ts`, `src/app/calculator/yearly/{page,YearlyClient}.tsx`, povezava v `CalculatorClient.tsx`, `tests/netting.test.ts`.
+
+## Decimalno ločilo (vejica/pika) v tarifah
+- Tarife: polja hranijo besedilo, ki ga tipkaš, zato lahko vpišeš »0,0186« ali »0.0186« (prej se je ločilo ob vsaki tipki izbrisalo). Prikaz z vejico.
+- MojElektro: vrednosti odčitkov in dogovorjene moči sprejmejo JSON število ali niz s piko/vejico (prej bi niz »1,25« tiho postal 1). `toNumberLoose` v `validate.ts` in `blocks.ts`.

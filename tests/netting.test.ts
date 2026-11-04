@@ -27,3 +27,12 @@ test("omrežnina se uteži z uvozom po blokih", () => {
   const r = nettingCost({ uvozKwh: 1000, oddajaKwh: 0, blokiKwh: [500, 500, 0, 0, 0] }, t);
   assert.ok(Math.abs(r.cenaOmreznina - 0.03) < 1e-12);
 });
+
+import { toNumberLoose } from "../src/lib/validate.ts";
+test("toNumberLoose: število, niz s piko ali vejico (brez odrezanja)", () => {
+  assert.equal(toNumberLoose(1.25), 1.25);
+  assert.equal(toNumberLoose("1,25"), 1.25);
+  assert.equal(toNumberLoose("1.25"), 1.25);
+  assert.equal(toNumberLoose("0,01864"), 0.01864);
+  assert.ok(Number.isNaN(toNumberLoose(undefined)));
+});
